@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 加载动画：360° 旋转 + 匀速循环 -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+
+    <rotate
+        android:duration="900"
+        android:fromDegrees="0"
+        android:interpolator="@android:interpolator/linear"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:repeatCount="infinite"
+        android:repeatMode="restart"
+        android:toDegrees="360" />
+
+    <alpha
+        android:duration="900"
+        android:fromAlpha="0.75"
+        android:interpolator="@android:interpolator/accelerate_decelerate"
+        android:repeatCount="infinite"
+        android:repeatMode="reverse"
+        android:toAlpha="1.0" />
+
+</set>

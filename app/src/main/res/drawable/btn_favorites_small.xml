@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 收藏按钮：圆角胶囊 + 渐变填充 + 微投影 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33E94560">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="15dp" />
+            <gradient
+                android:startColor="#33E94560"
+                android:endColor="#337C4DFF"
+                android:angle="135" />
+            <stroke android:width="0.5dp" android:color="#55E94560" />
+        </shape>
+    </item>
+</ripple>

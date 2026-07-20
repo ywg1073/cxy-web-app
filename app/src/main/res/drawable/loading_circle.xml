@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 加载旋转环：外圈渐变描边 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 外圈光晕 -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#1AE94560" />
+            <size android:width="88dp" android:height="88dp" />
+        </shape>
+    </item>
+    <!-- 中圈 -->
+    <item android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="@color/dark_card" />
+            <stroke android:width="3dp" android:color="#33E94560" />
+            <size android:width="72dp" android:height="72dp" />
+        </shape>
+    </item>
+    <!-- 内圈：渐变弧 -->
+    <item android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="@color/dark_secondary" />
+            <size android:width="56dp" android:height="56dp" />
+        </shape>
+    </item>
+    <!-- 中心Logo C -->
+    <item android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="@color/accent" />
+            <size android:width="40dp" android:height="40dp" />
+        </shape>
+    </item>
+</layer-list>

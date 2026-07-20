@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主色调：深邃夜空 -->
+    <color name="dark_primary">#FF0F0F1A</color>
+    <color name="dark_secondary">#FF1A1A2E</color>
+    <color name="dark_surface">#FF1E1E32</color>
+    <color name="dark_card">#FF262640</color>
+    <color name="dark_card_stroke">#33FFFFFF</color>
+
+    <!-- 强调色：活力珊瑚红 -->
+    <color name="accent">#FFE94560</color>
+    <color name="accent_light">#FFFF6B81</color>
+    <color name="accent_gradient_start">#FFE94560</color>
+    <color name="accent_gradient_end">#FF7C4DFF</color>
+
+    <!-- 文字 -->
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#B3FFFFFF</color>
+    <color name="text_hint">#80FFFFFF</color>
+
+    <!-- 错误色 -->
+    <color name="error_text">#FFFF6B6B</color>
+    <color name="error_bg">#FF1A1015</color>
+
+    <!-- 成功色 -->
+    <color name="success">#FF4ADE80</color>
+
+    <!-- 背景遮罩 -->
+    <color name="splash_bg">#F001010F</color>
+    <color name="overlay_dim">#CC000000</color>
+
+    <!-- 进度条 -->
+    <color name="progress_bar">#FFE94560</color>
+    <color name="progress_track">#1AFFFFFF</color>
+
+    <!-- 微信绿 -->
+    <color name="wechat_green">#FF07C160</color>
+
+    <!-- 白色 -->
+    <color name="white">#FFFFFFFF</color>
+    <color name="loading_text">#CCFFFFFF</color>
+</resources>

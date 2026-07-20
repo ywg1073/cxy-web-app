@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 沉浸式主题：状态栏透明，内容边到边（深色背景+浅色图标） -->
+    <style name="Theme.CxyWebView" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/dark_primary</item>
+        <item name="colorPrimaryVariant">@color/dark_secondary</item>
+        <item name="colorOnPrimary">@color/text_primary</item>
+        <item name="colorSecondary">@color/dark_secondary</item>
+        <item name="colorSecondaryVariant">@color/dark_card</item>
+        <item name="colorOnSecondary">@color/text_primary</item>
+        <!-- 沉浸式：状态栏透明 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+        <item name="android:windowBackground">@color/dark_primary</item>
+        <!-- 深色背景 → 浅色状态栏图标（false = 深色状态栏 = 白色图标） -->
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

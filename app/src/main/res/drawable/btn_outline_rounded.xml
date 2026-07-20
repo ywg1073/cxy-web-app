@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 次要按钮：描边圆角 + ripple -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#20FFFFFF">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke android:width="1dp" android:color="#44FFFFFF" />
+            <corners android:radius="22dp" />
+        </shape>
+    </item>
+</ripple>
