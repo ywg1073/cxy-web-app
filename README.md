@@ -11,4 +11,4 @@ QQ群：991054688
 ### 本地收藏 · 离线可看
 APP 登录后自动同步网页端收藏的题目，并缓存至本地设备。即使遇到网站维护或没有网络，也能随时打开收藏本，查看已保存的题目内容，复习不中断。
 
-![离线收藏演示](screenshots/offline_collection_demo.png)
+![离线收藏演示](screenshots/offline_demo_v2.png)
