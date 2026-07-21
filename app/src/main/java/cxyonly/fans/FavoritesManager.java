@@ -8,6 +8,7 @@ import android.webkit.WebView;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.json.JSONTokener;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -75,7 +76,8 @@ public class FavoritesManager {
                 + "  })\n"
                 + "    .then(function(r) { return r.json(); })\n"
                 + "    .then(function(d) {\n"
-                + "      if (d.code === 0 && d.data && d.data.items && d.data.items.length > 0) {\n"
+                + "      if (d.code !== 0) return {success:false, error:'API:'+d.code};\n"
+                + "      if (d.data && d.data.items && d.data.items.length > 0) {\n"
                 + "        allItems = allItems.concat(d.data.items);\n"
                 + "        if (d.data.items.length === perPage) {\n"
                 + "          return fetchPage(p+1);\n"
@@ -92,7 +94,7 @@ public class FavoritesManager {
                 + "})()";
 
         webView.evaluateJavascript(js, null);
-        mainHandler.postDelayed(() -> pollSyncResult(webView, 0), 1500);
+        mainHandler.postDelayed(() -> pollSyncResult(webView, 0), 1000);
     }
 
     private void pollSyncResult(WebView webView, int attempt) {
@@ -106,7 +108,7 @@ public class FavoritesManager {
 
         webView.evaluateJavascript("window.__favSyncResult", result -> {
             if (result == null || result.equals("null") || result.isEmpty()) {
-                mainHandler.postDelayed(() -> pollSyncResult(webView, attempt + 1), 1500);
+                mainHandler.postDelayed(() -> pollSyncResult(webView, attempt + 1), 1000);
                 return;
             }
             isSyncing = false;
@@ -116,14 +118,10 @@ public class FavoritesManager {
 
     private void processSyncResult(String rawResult) {
         try {
-            // WebView 回调返回格式："{...json...}"，外层引号加转义
-            // 用标准 JSONObject 解析即可，不需 JSONTokener
-            String json = rawResult;
-            if (json.startsWith("\"") && json.endsWith("\"")) {
-                json = json.substring(1, json.length() - 1)
-                        .replace("\\\"", "\"")
-                        .replace("\\\\", "\\");
-            }
+            // WebView evaluateJavascript 会把 JS 字符串再包一层 JSON 字符串。
+            // 必须先用 JSONTokener 解析外层字符串，不能手工 replace 反斜杠，否则复杂 LaTeX 会损坏。
+            Object parsed = new JSONTokener(rawResult).nextValue();
+            String json = parsed instanceof String ? (String) parsed : String.valueOf(parsed);
             json = json.trim();
 
             JSONObject root = new JSONObject(json);
@@ -245,22 +243,34 @@ public class FavoritesManager {
 
                 // 分类标签（mastery 映射为中文）
                 JSONObject userState = item.optJSONObject("user_state");
-                String mastery = "收藏";
+                String masteryRaw = "not_started";
                 String favTime = "";
+                String noteStr = "";
                 if (userState != null) {
-                    mastery = userState.optString("mastery", "not_started");
+                    masteryRaw = userState.optString("mastery", "not_started");
                     favTime = userState.optString("favorited_at", "");
-                    // 映射 mastery 值
-                    switch (mastery) {
-                        case "not_started": mastery = "收藏"; break;
-                        case "familiar": mastery = "不熟练"; break;
-                        case "unfamiliar": mastery = "完全不会"; break;
-                        case "mastered": mastery = "掌握"; break;
-                        default: mastery = "收藏"; break;
-                    }
+                    noteStr = userState.optString("note", "");
                 }
-                entry.put("category", mastery);
+                // 映射 mastery 值为中文标签（用于列表分类）
+                String masteryLabel = masteryRaw;
+                switch (masteryRaw) {
+                    case "not_started": masteryLabel = "收藏"; break;
+                    case "familiar": masteryLabel = "不熟练"; break;
+                    case "unfamiliar": masteryLabel = "完全不会"; break;
+                    case "mastered": masteryLabel = "掌握"; break;
+                    default: masteryLabel = "收藏"; break;
+                }
+                // 标准化 rawMastery：统一为 questions API 的值（needs_practice/not_known）
+                String rawMastery = masteryRaw;
+                switch (masteryRaw) {
+                    case "familiar": rawMastery = "needs_practice"; break;
+                    case "unfamiliar": rawMastery = "not_known"; break;
+                }
+                entry.put("category", masteryLabel);
                 entry.put("time", favTime);
+                entry.put("rawMastery", rawMastery);
+                entry.put("rawFavoritedAt", favTime);
+                entry.put("note", noteStr);
 
                 // 分类路径
                 String catPath = item.optString("category_name",

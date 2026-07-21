@@ -26,7 +26,7 @@
     <color name="success">#FF4ADE80</color>
 
     <!-- 背景遮罩 -->
-    <color name="splash_bg">#F001010F</color>
+    <color name="splash_bg">#F01A1A2E</color>
     <color name="overlay_dim">#CC000000</color>
 
     <!-- 进度条 -->

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<style>
+:root{--bg:#0f0f1a;--surface:#1a1a2e;--card:#1e1e32;--card-hover:#262640;--stroke:rgba(255,255,255,.06);--accent:#e94560;--accent-2:#7c4dff;--green:#4ade80;--red:#ef4444;--text:#f0f0f5;--text-2:#a0a0b8;--text-3:#6b6b85;--radius:16px;--shadow:0 2px 12px rgba(0,0,0,.3);--ease:cubic-bezier(.22,.61,.36,1)}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif}body{display:flex;align-items:center;justify-content:center;padding:22px 16px}.page{width:100%;max-width:420px;animation:in .32s var(--ease) both}@keyframes in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}.brand{text-align:center;margin-bottom:22px}.logo{width:74px;height:74px;border-radius:22px;margin:0 auto 16px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;box-shadow:0 8px 30px rgba(233,69,96,.32)}h1{font-size:24px;font-weight:850;letter-spacing:0;margin-bottom:8px}.brand p{font-size:13px;color:var(--text-3);line-height:1.7}.card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 18px;margin-bottom:14px}.eyebrow{font-size:12px;color:var(--accent);font-weight:800;margin-bottom:6px}.title{font-size:18px;font-weight:850;margin-bottom:8px}.desc{font-size:13px;color:var(--text-3);line-height:1.7;margin-bottom:18px}.input{width:100%;height:48px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.035);color:var(--text);font-size:17px;font-weight:700;padding:0 14px;outline:none;letter-spacing:.04em}.input:focus{border-color:rgba(233,69,96,.45);box-shadow:0 0 0 3px rgba(233,69,96,.12)}.actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.btn{height:46px;border:0;border-radius:14px;font-size:14px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 4px 20px rgba(233,69,96,.28)}.btn.secondary{background:rgba(255,255,255,.04);border:1px solid var(--stroke);color:var(--text-2);box-shadow:none}.btn:active{transform:scale(.97)}.guide{display:grid;gap:10px}.step{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--stroke)}.num{width:24px;height:24px;border-radius:8px;flex-shrink:0;background:rgba(233,69,96,.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900}.step strong{display:block;font-size:14px;margin-bottom:3px}.step span{font-size:12px;color:var(--text-3);line-height:1.6}.status{min-height:20px;margin-top:12px;font-size:13px;color:var(--text-3);line-height:1.5}.status.ok{color:var(--green)}.status.err{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand"><div class="logo">CXY</div><h1>大观园登录</h1><p>关注公众号，获取登录码后进入题库。登录状态会由 App 自动保存。</p></div>
+  <div class="card">
+    <div class="eyebrow">登录码</div><div class="title">输入登录码进入</div><div class="desc">可以手动输入，也可以从剪贴板自动填入。</div>
+    <input id="code" class="input" placeholder="请输入登录码" autocomplete="one-time-code" autocapitalize="none">
+    <div class="actions"><button class="btn secondary" onclick="fillClip()">剪贴板填入</button><button class="btn" onclick="submitCode()">确定登录</button></div>
+    <div id="status" class="status"></div>
+  </div>
+  <div class="card guide">
+    <div class="step"><div class="num">1</div><div><strong>打开微信</strong><span>点击下方按钮打开微信，搜索「澄潇宇」公众号。</span></div></div>
+    <div class="step"><div class="num">2</div><div><strong>获取登录码</strong><span>在公众号输入「大观园」，复制返回的登录码。</span></div></div>
+    <div class="step"><div class="num">3</div><div><strong>回到 App 登录</strong><span>App 会自动识别剪贴板登录码，也可以手动粘贴。</span></div></div>
+    <button class="btn" onclick="openWeChat()">打开微信</button>
+  </div>
+</div>
+<script>
+const input=document.getElementById('code');const statusEl=document.getElementById('status');
+function setStatus(msg,ok){statusEl.textContent=msg||'';statusEl.className='status '+(ok?'ok':(msg?'err':''));}
+function submitCode(){const code=input.value.trim();if(!code){setStatus('请输入登录码',false);return;}setStatus('正在登录…',true);if(window.Android)window.Android.submitLoginCode(code)}
+function fillClip(){setStatus('正在读取剪贴板…',true);if(window.Android)window.Android.fillClipboardCode()}
+function openWeChat(){if(window.Android)window.Android.openWeChatFromLogin()}
+window.fillLoginCode=function(code){input.value=code||'';setStatus(code?'已从剪贴板填入登录码':'未检测到登录码',!!code)};
+window.onNativeLoginResult=function(msg,success){setStatus(msg,success)};
+setTimeout(fillClip,450);
+input.addEventListener('keydown',e=>{if(e.key==='Enter')submitCode()});
+</script>
+</body>
+</html>

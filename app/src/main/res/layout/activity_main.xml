@@ -50,7 +50,8 @@
                 android:fontFamily="sans-serif-medium"
                 android:background="@drawable/btn_favorites_small"
                 android:clickable="true"
-                android:focusable="true" />
+                android:focusable="true"
+                android:visibility="gone" />
         </LinearLayout>
 
         <!-- 顶部进度条：2.5dp 圆角渐变 -->
@@ -78,6 +79,16 @@
                 android:layout_height="match_parent" />
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
     </LinearLayout>
+
+    <!-- 后台静默 WebView：负责登录态预热、API/DOM 抓取，不参与前台显示 -->
+    <WebView
+        android:id="@+id/backgroundWebView"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:alpha="0"
+        android:importantForAccessibility="no"
+        android:visibility="visible" />
 
     <!-- ========== 加载动画遮罩层（覆盖顶栏） ========== -->
     <FrameLayout

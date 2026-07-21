@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<link rel="stylesheet" href="katex/katex.min.css">
+<script src="katex/katex.min.js"></script>
+<script src="katex/auto-render.min.js"></script>
+<style>
+:root {
+  --bg:#0f0f1a;
+  --surface:#1a1a2e;
+  --card:#1e1e32;
+  --card-hover:#262640;
+  --stroke:rgba(255,255,255,.06);
+  --accent:#e94560;
+  --accent-2:#7c4dff;
+  --blue:#4fc3f7;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --red:#ef4444;
+  --text:#f0f0f5;
+  --text-2:#a0a0b8;
+  --text-3:#6b6b85;
+  --radius:16px;
+  --shadow:0 2px 12px rgba(0,0,0,.3);
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --ease-bounce:cubic-bezier(.34,1.56,.64,1);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{background:var(--bg);color:var(--text);min-height:100vh;font-family:-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+body::-webkit-scrollbar{display:none;}
+#app{min-height:100vh;padding-bottom:84px;}
+.page{animation:pageIn .12s ease both;}
+@keyframes pageIn{from{opacity:0}to{opacity:1}}
+.topbar{position:sticky;top:0;z-index:50;background:rgba(15,15,26,.88);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid var(--stroke);padding:14px 16px 12px;display:flex;align-items:center;gap:10px;}
+.brand{flex:1;min-width:0;}
+.brand h1{font-size:18px;line-height:1.25;font-weight:800;color:var(--text);letter-spacing:0;}
+.brand .sub{font-size:12px;color:var(--text-3);margin-top:3px;}
+.icon-btn{width:38px;height:38px;border-radius:12px;border:1px solid var(--stroke);background:var(--card);color:var(--accent);font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s var(--ease);}
+.icon-btn:active{transform:scale(.92);background:var(--card-hover);}
+.content{padding:16px 16px 12px;}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+.stat-card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius);padding:18px 16px;box-shadow:var(--shadow);min-height:126px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;animation:cardIn .2s var(--ease) both;}
+@keyframes cardIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes panelIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.stat-card:active,.panel:active,.chapter-card:active{transform:scale(.98);background:var(--card-hover);}
+.stat-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;margin-bottom:10px;}
+.stat-icon.green{background:rgba(74,222,128,.12);color:var(--green)}
+.stat-icon.blue{background:rgba(79,195,247,.12);color:var(--blue)}
+.stat-icon.amber{background:rgba(251,191,36,.12);color:var(--amber)}
+.stat-icon.rose{background:rgba(233,69,96,.12);color:var(--accent)}
+.stat-label{font-size:12px;color:var(--text-3);margin-bottom:5px;}
+.stat-value{font-size:24px;font-weight:800;color:var(--text);line-height:1.2;transition:opacity .25s ease,transform .25s ease;}
+.stat-value.fresh{opacity:.5;transform:scale(.92);}
+.card-tip{font-size:11px;color:var(--text-3);margin-top:8px;}
+.panel{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius);padding:20px 18px;margin-bottom:16px;box-shadow:var(--shadow);transition:all .15s var(--ease);}.panel-in{animation:panelIn .35s var(--ease) both;animation-delay:.15s;}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+.eyebrow{font-size:12px;color:var(--accent);font-weight:700;margin-bottom:4px;}
+.panel-title{font-size:17px;font-weight:800;color:var(--text);line-height:1.35;}
+.panel-sub{font-size:12px;color:var(--text-3);line-height:1.6;margin-top:4px;}
+.pill{font-size:12px;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2));border-radius:999px;padding:6px 12px;font-weight:700;white-space:nowrap;}
+.quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.quick-btn{border:1px solid var(--stroke);border-radius:14px;background:rgba(255,255,255,.03);padding:14px 12px;color:var(--text-2);font-size:13px;text-align:left;cursor:pointer;}
+.quick-btn strong{display:block;color:var(--text);font-size:15px;margin-bottom:4px;}
+.category-list,.chapter-list{display:flex;flex-direction:column;gap:12px;}
+.category-card,.chapter-card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow);transition:all .15s var(--ease);position:relative;animation:cardPop .2s var(--ease) both;}
+@keyframes cardPop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.category-card:before,.chapter-card:before{content:"";position:absolute;left:0;top:20px;bottom:20px;width:4px;border-radius:2px;background:linear-gradient(180deg,var(--accent),var(--accent-2));}
+.category-main,.chapter-main{padding-left:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.category-name,.chapter-name{font-size:16px;font-weight:800;color:var(--text);line-height:1.3;}
+.category-desc,.chapter-count{font-size:12px;color:var(--text-3);margin-top:8px;}
+.chapter-preview{font-size:15px;color:var(--text-2);line-height:1.85;margin-top:8px;word-break:break-word;opacity:0;transition:opacity .35s ease;}
+.chapter-preview.rendered{opacity:1;}
+.chapter-preview .katex{font-size:1.02em;line-height:1.5;}
+.preview-options{margin-top:8px;border-top:1px solid var(--stroke);padding-top:6px;}
+.chapter-preview .katex-display{margin:10px 0;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;}
+.chapter-preview .katex-display>.katex{overflow-x:auto;overflow-y:hidden;}
+.preview-option{display:flex;gap:8px;padding:4px 0;font-size:14px;color:var(--text-2);}
+.preview-option .olabel{width:22px;height:22px;border-radius:6px;background:rgba(233,69,96,.1);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+.arrow{color:var(--text-3);font-size:18px;}
+.empty{text-align:center;padding:92px 28px;color:var(--text-3);}
+.empty-emoji{font-size:54px;opacity:.42;margin-bottom:16px;}
+.empty-title{font-size:16px;color:var(--text-2);font-weight:700;margin-bottom:6px;}
+.empty-sub{font-size:13px;line-height:1.7;color:var(--text-3);}
+.tabbar{position:fixed;left:0;right:0;bottom:0;height:68px;background:rgba(15,15,26,.9);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border-top:1px solid var(--stroke);display:grid;grid-template-columns:repeat(4,1fr);z-index:80;padding-bottom:4px;}
+.tab{border:0;background:transparent;color:var(--text-3);font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;border-radius:14px 14px 0 0;transition:all .15s var(--ease);}
+.tab .ico{font-size:19px;line-height:1;}
+.tab.active{color:var(--accent);background:rgba(233,69,96,.08);font-weight:700;}
+.tab:active{transform:scale(.94);}
+.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.56);z-index:120;display:flex;align-items:flex-end;animation:fadeIn .2s ease both;}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.drawer{width:100%;max-height:72vh;background:var(--surface);border-radius:18px 18px 0 0;border:1px solid var(--stroke);box-shadow:0 -10px 40px rgba(0,0,0,.42);padding:18px 16px 24px;overflow:auto;animation:drawerIn .26s var(--ease) both;}
+@keyframes drawerIn{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.drawer-handle{width:42px;height:4px;border-radius:99px;background:var(--text-3);opacity:.45;margin:0 auto 16px;}
+.drawer-title{font-size:18px;font-weight:800;margin-bottom:4px;}
+.drawer-sub{font-size:12px;color:var(--text-3);margin-bottom:16px;}
+.drawer-back{font-size:13px;color:var(--blue);padding:8px 0 12px;cursor:pointer;font-weight:700;display:flex;align-items:center;gap:4px;}.chapter-arrow{font-size:16px;color:var(--text-3);flex-shrink:0;margin-left:8px;}
+/* 抽屉顶栏统一：← + 标题 + ⌂ */
+.drawer-topbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.drawer-back-btn,.drawer-home-btn{width:38px;height:38px;border-radius:12px;border:1px solid var(--stroke);background:var(--card);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s var(--ease);}
+.drawer-back-btn{color:var(--accent);}.drawer-back-btn:active,.drawer-home-btn:active{transform:scale(.92);background:var(--card-hover);}
+.drawer-home-btn{color:var(--text-3);}
+.drawer-topbar-title{flex:1;font-size:17px;font-weight:800;color:var(--text);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.drawer-sub{margin-bottom:16px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const APP_STATE = {
+tab: 'home',
+prevTab: 'home',
+favoritesCount: 0,
+totalCount: 4899,
+masteredCount: 0,
+todayCount: 0,
+todayPractice: 0,
+  selectedCategory: null,
+  categories: []
+};
+
+function b64DecodeUtf8(str){
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
+}
+function b64EncodeUtf8(str){
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach(function(b){binary += String.fromCharCode(b)});
+  return btoa(binary);
+}
+function decodeData() {
+  const hash = location.hash || '';
+  if (!hash.startsWith('#data=')) return;
+  try { Object.assign(APP_STATE, JSON.parse(b64DecodeUtf8(hash.substring(6))) || {}); } catch(e) {}
+}
+
+function esc(s){return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function setTab(tab){if(tab==='favorites'){callAndroid('openFavorites');return;}if(tab===APP_STATE.tab)return;if(APP_STATE.tab!=='history')APP_STATE.prevTab=APP_STATE.tab;APP_STATE.tab = tab; APP_STATE.selectedCategory = null; render();if(tab==='home'){setTimeout(function(){callAndroid('requestAppData');},150);}}
+function callAndroid(name, arg){try{if(window.Android && typeof window.Android[name] === 'function'){arg === undefined ? window.Android[name]() : window.Android[name](String(arg)); return true;}}catch(e){} return false;}
+
+// 页面内导航栈（history 子页面、抽屉等）
+let app_nav = [];
+let app_popReady = false;
+let _appPopGuard = 0; // counter guard for multiple history.go(-n) events
+window.addEventListener('popstate', function(e){
+  if (!app_popReady || _appPopGuard > 0) { if (_appPopGuard > 0) _appPopGuard--; return; }
+  if (app_nav.length > 0) {
+    var prev = app_nav.pop();
+    if (prev.view === 'history') { setTab(APP_STATE.prevTab || 'home'); }
+    else if (prev.view === 'drawer') { drawerPopFromBack(); }
+  } else {
+    setTab('home');
+  }
+});
+setTimeout(function(){ app_popReady = true; history.replaceState({app_view:'base'}, ''); }, 50);
+
+function pushAppNav(view) {
+  app_nav.push(view);
+  history.pushState({app_view: typeof view === 'string' ? view : view.view}, '');
+}
+
+function topbar(title, sub, backAction) {
+  var h='<div class="topbar">';
+  if(backAction)h+='<button class="icon-btn" onclick="'+backAction+'">←</button>';
+  h+='<div class="brand"><h1>'+esc(title)+'</h1><div class="sub">'+esc(sub)+'</div></div>';
+  if(APP_STATE.tab!=='home')h+='<button class="icon-btn" onclick="setTab(\'home\')">⌂</button>';
+  return h+'</div>';
+}
+function tabbar(){
+  const tabs=[['home','⌂','首页'],['library','▦','题库'],['favorites','★','收藏'],['me','◉','我的']];
+  return '<div class="tabbar">'+tabs.map(t=>'<button class="tab '+(APP_STATE.tab===t[0]?'active':'')+'" onclick="setTab(\''+t[0]+'\')"><span class="ico">'+t[1]+'</span><span>'+t[2]+'</span></button>').join('')+'</div>';
+}
+
+function renderHome(){
+  const ls=APP_STATE.lastStudy;
+  let resumeContent;
+  if(ls&&ls.has_record){
+    resumeContent='<div class="eyebrow">继续上次学习</div><div class="panel-title">'+esc(ls.category_name||'')+'</div><div class="panel-sub">'+fmtTime(ls.updated_at)+'</div>';
+  }else{
+    resumeContent='<div class="eyebrow">继续上次学习</div><div class="panel-title">暂无记录</div><div class="panel-sub">选择章节开始刷题吧</div>';
+  }
+  return topbar('大观园','') + '<div class="content">'
+    + '<div class="stats-grid">'
+    + statCard(0,'green','▣','大观总量',APP_STATE.totalCount,'')
+    + statCard(1,'blue','✓','已经掌握',APP_STATE.masteredCount,'')
+    + statCard(2,'amber','★','收藏本',APP_STATE.favoritesCount,'点击进入收藏本','openFavorites')
+    + statCard(3,'rose','↗','今日完成',APP_STATE.todayCount,'')
+    + '</div>'
+    + '<div class="panel" id="resumePanel" onclick="resumeStudy()">'+resumeContent+'</div>'
+    + '<div class="panel"><div class="panel-head"><div><div class="eyebrow">学习入口</div><div class="panel-title">继续刷题</div></div><span class="pill">在线</span></div><div class="quick-grid"><button class="quick-btn" onclick="setTab(\'library\')"><strong>题库分类</strong>按章节进入练习</button><button class="quick-btn" onclick="callAndroid(\'openFavorites\')"><strong>收藏题目</strong>离线缓存复习</button></div></div>'
+    + '<div class="panel" onclick="setTab(\'history\')"><div class="eyebrow">学习回看</div><div class="panel-title">最近学习记录</div><div class="panel-sub">点击查看完整学习历史与进度</div></div>'
+    + '</div>';
+}
+function resumeStudy(){
+  const ls=APP_STATE.lastStudy;
+  if(!ls||!ls.has_record||!ls.category_id)return;
+  if(window.Android&&window.Android.openPracticeWithQuestion){
+    window.Android.openPracticeWithQuestion(String(ls.category_id),ls.question_id?String(ls.question_id):'');
+  }else if(window.Android&&window.Android.openPractice){
+    window.Android.openPractice(String(ls.category_id));
+  }else{
+    const payload={categoryId:String(ls.category_id)};
+    if(ls.question_id)payload.questionId=String(ls.question_id);
+    const data=b64EncodeUtf8(JSON.stringify(payload));
+    location.href='file:///android_asset/practice_frontend.html#data='+data;
+  }
+}
+function statCard(i,color,icon,label,value,tip,action){return '<div class="stat-card" style="--i:'+i+'" '+(action?'onclick="callAndroid(\''+action+'\')"':'')+'><div><div class="stat-icon '+color+'">'+icon+'</div><div class="stat-label">'+esc(label)+'</div><div class="stat-value">'+esc(value)+'</div></div>'+(tip?'<div class="card-tip">'+esc(tip)+'</div>':'')+'</div>';}
+
+function renderLibrary(){
+  if(!APP_STATE.categories || !APP_STATE.categories.length){
+    return topbar('题库分类','加载中…') + '<div class="content"><div class="empty"><div class="loading-spinner"></div><p>正在获取题库…</p></div></div>';
+  }
+  return topbar('题库分类','按真实题库层级进入练习') + '<div class="content"><div class="panel"><div class="panel-head"><div><div class="eyebrow">题库入口</div><div class="panel-title">全部分类</div><div class="panel-sub">共 '+APP_STATE.categories.length+' 个分类</div></div><span class="pill">'+APP_STATE.totalCount+' 题</span></div></div><div class="category-list">'
+    + APP_STATE.categories.map((c,i)=>categoryCard(c,i,'openCategory('+i+')')).join('')
+    + '</div></div>';
+}
+function categoryCard(c,i,action){return '<div class="category-card" style="--i:'+i+'" onclick="'+action+'"><div class="category-main"><div><div class="category-name">'+esc(c.name)+'</div><div class="category-desc">'+esc(categoryMeta(c))+'</div></div><div class="arrow">›</div></div></div>'}
+function categoryMeta(c){const childCount=(c.children||c.chapters||[]).length;const total=c.totalQuestionCount||c.questionCount||0;return childCount?('包含 '+childCount+' 个子分类'):(total?total+' 题':'点击开始学习')}
+function closeDrawer() {
+  var el = document.querySelector('.drawer-mask');
+  if (el) el.remove();
+  APP_STATE.selectedCategory = null;
+  var count = 0;
+  // Pop ALL drawer entries from nav and history
+  while (app_nav.length > 0 && app_nav[app_nav.length-1].view === 'drawer') {
+    app_nav.pop();
+    count++;
+  }
+  if (count > 0) {
+    _appPopGuard = count; // counter to guard multiple popstate events
+    history.go(-count);
+  }
+}
+// 返回上一级抽屉（← 按钮点击）
+function drawerBackOneLevel() {
+  // 弹出当前抽屉层级
+  if (app_nav.length > 0 && app_nav[app_nav.length-1].view === 'drawer') {
+    app_nav.pop();
+  }
+  reopenParentOrClose(true);
+}
+// 物理返回时由 popstate 调用（当前层级已被 popstate 弹出，不 push 新 state）
+function drawerPopFromBack() {
+  reopenParentOrClose(false);
+}
+function reopenParentOrClose(pushState) {
+  // 检查上一级：如果有父 drawer 状态，恢复到父级（不 push state）
+  if (app_nav.length > 0 && app_nav[app_nav.length-1].view === 'drawer') {
+    var parentPath = app_nav[app_nav.length-1].path;
+    if (parentPath && parentPath.length >= 1) {
+      var node = APP_STATE.categories;
+      for(var i=0;i<parentPath.length;i++){node=(node.children||node.chapters||[])[parentPath[i]]||null;if(!node)return;}
+      APP_STATE.selectedCategory = node;
+      renderDrawer(parentPath, pushState !== false); // pushState=false 时不 push history
+      return;
+    }
+  }
+  // 没有更上层：关闭抽屉
+  closeDrawer();
+}
+function openCategory(index){APP_STATE.selectedCategory = APP_STATE.categories[index]; renderDrawer();}
+function openChild(path){let node={children:APP_STATE.categories};for(var i=0;i<path.length;i++){node=(node.children||node.chapters||[])[path[i]]||null;if(!node)return;}APP_STATE.selectedCategory=node;renderDrawer(path);}
+function openPracticeFromApp(categoryId, siblingsJson, currentIdx){
+  if(!categoryId) return;
+  const mask = document.querySelector('.drawer-mask');
+  if(mask) mask.remove();
+  APP_STATE.selectedCategory = null;
+  var payload = {categoryId:String(categoryId)};
+  if(siblingsJson && currentIdx !== undefined) {
+    // siblingsJson 是 JSON 字符串，要转回数组再放入 payload（避免 JSON.stringify 双重编码）
+    try { payload.siblings = JSON.parse(siblingsJson); } catch(e) { payload.siblings = siblingsJson; }
+    payload.siblingIdx = currentIdx;
+  }
+  const data = b64EncodeUtf8(JSON.stringify(payload));
+  const target = 'file:///android_asset/practice_frontend.html#data=' + data;
+  // 优先尝试 Android bridge（附带 siblings 则直接导航，保留数据）
+  if(!siblingsJson || currentIdx === undefined){
+    const before = location.href;
+    const started = callAndroid('openPractice', categoryId);
+    if(started) {
+      setTimeout(function(){
+        if (location.href === before) location.href = target;
+      }, 300);
+      return;
+    }
+  }
+  // 无 bridge 或附带 sibling 信息时直接导航
+  location.href = target;
+}
+function renderDrawer(path, pushState){
+ const c = APP_STATE.selectedCategory; if(!c) return;
+ const children=c.children||c.chapters||[];
+ const old = document.querySelector('.drawer-mask'); if(old) old.remove();
+ const div = document.createElement('div');
+ div.className='drawer-mask';
+ div.onclick = function(e){ if(e.target === div){ closeDrawer(); } };
+ const base=path||[APP_STATE.categories.indexOf(c)];
+ // Push drawer state with full current path for back-to-previous-level（popstate 回退时不 push）
+ if (pushState !== false) pushAppNav({view:'drawer', path: base||[]});
+  div.innerHTML = '<div class="drawer"><div class="drawer-handle"></div>'
+    + '<div class="drawer-topbar">'
+    + '<button class="drawer-back-btn" onclick="event.stopPropagation();drawerBackOneLevel()">←</button>'
+    + '<div class="drawer-topbar-title">'+esc(c.name)+'</div>'
+    + '<button class="drawer-home-btn" onclick="event.stopPropagation();callAndroid(\'goHome\')">⌂</button>'
+    + '</div>'
+    + '<div class="drawer-sub">'+esc(categoryMeta(c))+'</div><div class="chapter-list">'
+    + (children.length?children.map(function(ch,i){
+        var sid = ch.id || '';
+        var sibJson = esc(JSON.stringify(children.map(function(s){return {id:String(s.id),name:s.name}}))).replace(/"/g,'\u0026quot;');
+        return '<div class="chapter-card" data-id="'+sid+'" data-siblings="'+sibJson+'" data-idx="'+i+'" onclick="var d=this.dataset;openPracticeFromApp(d.id,d.siblings,parseInt(d.idx))"><div class="chapter-main"><div><div class="chapter-name">'+esc(ch.name)+'</div><div class="chapter-count">'+esc(categoryMeta(ch))+'</div></div><div class="arrow">›</div></div></div>';
+      }).join(''):'<div class="chapter-card" onclick="openPracticeFromApp(\''+esc(c.id)+'\')"><div class="chapter-main"><div><div class="chapter-name">开始学习</div><div class="chapter-count">'+esc(c.questionCount||c.totalQuestionCount||'章节题目')+'</div></div><div class="arrow">›</div></div></div>')
+    + '</div></div>';
+  document.body.appendChild(div);
+}
+
+function renderFavorites(){
+  return topbar('收藏题目','') + '<div class="content"><div class="panel" onclick="callAndroid(\'openFavorites\')"><div class="panel-head"><div><div class="eyebrow">本地收藏</div><div class="panel-title">进入收藏本</div><div class="panel-sub">复杂公式使用 KaTeX 渲染，断网也可以打开。</div></div><span class="pill">'+APP_STATE.favoritesCount+' 题</span></div></div><div class="empty"><div class="empty-emoji">★</div><div class="empty-title">点击上方卡片进入收藏</div><div class="empty-sub">收藏页会优先打开本地数据。</div></div></div>';
+}
+function renderMe(){
+  return topbar('我的','') + '<div class="content"><div class="panel"><div class="eyebrow">账户状态</div><div class="panel-title">已登录</div></div><div class="panel" onclick="callAndroid(\'logout\')"><div class="panel-title">退出登录</div><div class="panel-sub">清除当前账号登录状态</div></div></div>';
+}
+// ========== 学习历史 ==========
+let HISTORY_DATA = {events:[], lastStudy:{}, loading:false};
+const ACTION_LABELS = {favorite_mark:'收藏了',favorite_unmark:'取消收藏',practice:'练习了',mastered_mark:'标记了掌握',needs_practice_mark:'标记为不熟练',needs_practice_unmark:'取消不熟练',not_known_mark:'标记为不会',mastered:'已掌握',familiar:'标记为不熟练',unknown:'标记为完全不会'};
+const KO={delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false,strict:false};
+function fmtTime(iso){if(!iso)return '';const d=new Date(iso);return (d.getMonth()+1)+'-'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+let PREVIEW_CACHE={};
+function truncateStem(s,max){
+  if(!s)return'';
+  // 保留完整 $...$ 或 $$...$$ 公式（支持多行），只截断纯文本
+  var parts=s.split(/(\$\$[\s\S]+?\$\$|\$.+?\$)/g);
+  var out='';
+  for(var i=0;i<parts.length;i++){
+    var p=parts[i];
+    if((p.startsWith('$')||p.startsWith('$$'))&&(p.endsWith('$')||p.endsWith('$$'))){
+      // 公式块完整保留，但若太长则跳过（避免预览被撑爆）
+if(out.length<max && out.length + p.length < max*1.5) out+=p;
+      else break;
+    }else{
+      var need=max-out.length;
+      if(need<=0)break;
+      if(p.length<=need){out+=p;}
+      else{
+        var cut=p.substring(0,need);
+        var idx=Math.max(cut.lastIndexOf('，'),cut.lastIndexOf('。'),cut.lastIndexOf('；'),cut.lastIndexOf('、'),cut.lastIndexOf(' '));
+        if(idx>need*0.3)out+=cut.substring(0,idx+1);
+        else out+=cut;
+        out+='…';
+        break;
+      }
+    }
+  }
+  return out;
+}
+// 生成预览 HTML：全部内容用 CSS line-clamp:9 控制行数
+function previewHtml(cached, qid){
+  if(!cached||!cached.stem)return '题目 #'+qid;
+  return cached.fullContent || cached.stem;
+}
+// 并行获取题目预览，但逐个更新 DOM（不阻塞主线程）
+function fetchPreviews(events){
+var ids={},tk=APP_STATE.access_token||'',hd=tk?{'Authorization':'Bearer '+tk}:{};
+events.forEach(function(e){if(e.question_id&&!PREVIEW_CACHE[e.question_id])ids[e.question_id]=true});
+var keys=Object.keys(ids);
+if(!keys.length)return;
+// 所有请求并行发出，每个完成后通过微任务更新对应 DOM
+keys.forEach(function(qid){
+fetch('https://cxyonly.fans/api/questions/'+qid,{headers:hd})
+.then(function(r){if(!r.ok)throw Error('http');return r.json()})
+.then(function(d){
+if(!d)return;
+var st=d.stem||d.stem_md||(d.document&&d.document.stem_md)||(d.document&&d.document.content_md)||'';
+if(!st)return;
+var optsHtml='';
+if(d.options&&d.options.length){
+ optsHtml='<div class="preview-options">';
+ for(var oi=0;oi<d.options.length;oi++){
+ var opt=d.options[oi];
+ optsHtml+='<div class="preview-option"><span class="olabel">'+(opt.label||String.fromCharCode(65+oi))+'</span><span class="ocontent">'+(opt.content_md||opt.content||opt.text||'')+'</span></div>';
+ }
+ optsHtml+='</div>';
+}
+var fullContent=st+optsHtml;
+PREVIEW_CACHE[qid]={stem:st,optionsHtml:optsHtml,fullContent:fullContent,categoryIds:d.category_ids||(d.document&&d.document.category_ids)||[]};
+// 用微任务延迟到下一帧更新 DOM，避免同步布局抖动
+Promise.resolve().then(function(){
+var els=document.querySelectorAll('[data-qid="'+qid+'"]');
+for(var j=0;j<els.length;j++){
+els[j].innerHTML = previewHtml(PREVIEW_CACHE[qid], qid);
+}
+// 统一渲染 KaTeX（合并到下一帧）
+requestAnimationFrame(function(){
+for(var j=0;j<els.length;j++){
+try{renderMathInElement(els[j],KO);}catch(e){}
+els[j].classList.add('rendered');
+}
+});
+});
+}).catch(function(){});
+});
+}
+function goToQuestion(catId, qId){
+  if(!qId)return;
+  // 如果没有 categoryId，尝试从 PREVIEW_CACHE 获取
+  if(!catId || catId==='null' || catId===''){
+    var cached = PREVIEW_CACHE[qId];
+    if(cached && cached.categoryIds && cached.categoryIds.length){
+      catId = String(cached.categoryIds[0]);
+    }else{
+      // PREVIEW_CACHE 还没有，尝试直接 fetch 获取 category_ids
+      var tk=APP_STATE.access_token||'';
+      var hd=tk?{'Authorization':'Bearer '+tk}:{};
+      fetch('https://cxyonly.fans/api/questions/'+qId,{headers:hd}).then(function(r){return r.json()}).then(function(d){
+        if(d && d.category_ids && d.category_ids.length){
+          goToQuestion(String(d.category_ids[0]), qId);
+        }else{
+          // API 返回但没有 category_ids，仍然跳转（用空 categoryId）
+          goToQuestion('', qId);
+        }
+      }).catch(function(){
+        // 网络失败，仍然尝试跳转（用空 categoryId）
+        goToQuestion('', qId);
+      });
+      return;
+    }
+  }
+  if(window.Android&&window.Android.openPracticeWithQuestion){
+    window.Android.openPracticeWithQuestion(String(catId),qId?String(qId):'');
+  }else if(window.Android&&window.Android.openPractice){
+    window.Android.openPractice(String(catId));
+  }else{
+    const payload={categoryId:String(catId)};
+    if(qId)payload.questionId=String(qId);
+    const data=b64EncodeUtf8(JSON.stringify(payload));
+    location.href='file:///android_asset/practice_frontend.html#data='+data;
+  }
+}
+function rm(el){try{renderMathInElement(el||document.getElementById('app'),KO)}catch(e){}}
+function renderHistory(){
+  // 进入历史页面时 push nav 状态
+  if (app_nav.length === 0 || app_nav[app_nav.length-1].view !== 'history') {
+    pushAppNav('history');
+  }
+  let html = '<div class="page">' + topbar('学习回看','最近学习记录','app_nav.pop();setTab(APP_STATE.prevTab||\'home\')') + '<div class="content">';
+  if(HISTORY_DATA.loading){
+    html += '<div class="empty"><div class="loading-spinner"></div><p>加载中…</p></div></div></div>';
+    document.getElementById('app').innerHTML = html;
+    return;
+  }
+  const ls = HISTORY_DATA.lastStudy;
+  if(ls && ls.has_record){
+    html += '<div class="panel"><div class="eyebrow">继续上次学习</div><div class="panel-title">'+esc(ls.category_name||'')+'</div><div class="panel-sub">上次学到: '+fmtTime(ls.updated_at)+'</div></div>';
+  }
+  html += '<div class="stats-grid"><div class="stat-card"><div class="stat-icon green">✓</div><div class="stat-label">今日掌握</div><div class="stat-value">'+(APP_STATE.todayCount||0)+'</div></div><div class="stat-card"><div class="stat-icon blue">↗</div><div class="stat-label">今日练习</div><div class="stat-value">'+(APP_STATE.todayPractice||0)+'</div></div></div>';
+  const events = HISTORY_DATA.events;
+  if(events.length){
+    html += '<div class="panel"><div class="panel-head"><div><div class="eyebrow">活动记录</div><div class="panel-title">最近 '+events.length+' 条</div></div></div></div><div class="category-list">';
+    events.forEach(function(e,i){
+      const action = ACTION_LABELS[e.action]||e.action;
+      const preview = PREVIEW_CACHE[e.question_id]||(e.question_id?'题目 #'+e.question_id:'未记录');
+      html += '<div class="chapter-card" style="--i:'+i+'" '+(e.question_id?'onclick="goToQuestion(\''+(e.category_id||'')+'\',\''+e.question_id+'\')"':'')+'><div class="chapter-main"><div><div class="chapter-name">'+esc(action)+'</div><div class="chapter-preview" data-qid="'+e.question_id+'">'+(PREVIEW_CACHE[e.question_id]?previewHtml(PREVIEW_CACHE[e.question_id], e.question_id):'题目 #'+e.question_id)+'</div><div class="chapter-count">'+fmtTime(e.created_at)+'</div></div><div class="chapter-arrow">→</div></div></div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div class="empty"><div class="empty-emoji">📖</div><div class="empty-title">暂无学习记录</div><div class="empty-sub">开始刷题后会显示在这里</div></div>';
+  }
+  html += '</div></div>';
+  var app=document.getElementById('app');
+  app.innerHTML = html + tabbar();
+  if(HISTORY_DATA.events.length){
+    // 渲染内容区的 KaTeX（包括已缓存的预览公式）
+    var contentEl = app.querySelector('.content');
+    if(contentEl) setTimeout(function(){
+      try{
+        renderMathInElement(contentEl,KO);
+        // 渐显所有预览卡片
+        contentEl.querySelectorAll('.chapter-preview').forEach(function(el){el.classList.add('rendered');});
+      }catch(e){}
+    }, 50);
+  }
+}
+function loadHistory(){
+if(HISTORY_DATA.loading) return;
+// 如果已有数据，直接渲染，不重新拉取
+if(HISTORY_DATA.events && HISTORY_DATA.events.length){
+  renderHistory();
+  return;
+}
+HISTORY_DATA.loading = true;
+renderHistory();
+// 先尝试桥接获取（推荐），回退到直接 fetch
+if(window.Android&&window.Android.requestHistoryData){
+  window.Android.requestHistoryData();
+}else{
+  var tk=APP_STATE.access_token||'';
+  var hd=tk?{'Authorization':'Bearer '+tk}:{};
+  Promise.all([
+    fetch('https://cxyonly.fans/api/user/practice_events/recent?per_page=50',{headers:hd}).then(function(r){return r.json()}).catch(function(){return {data:{items:[]}}}),
+    fetch('https://cxyonly.fans/api/questions/user/last_study',{headers:hd}).then(function(r){return r.json()}).catch(function(){return {}}),
+    fetch('https://cxyonly.fans/api/user/daily_stats',{headers:hd}).then(function(r){return r.json()}).catch(function(){return {}})
+  ]).then(function(results){
+    var eventsData = results[0] && results[0].data && results[0].data.items || [];
+    var ds = results[2] && results[2].data ? results[2].data : results[2] || {};
+    if(ds.today_mastered_count!=null)APP_STATE.todayCount=ds.today_mastered_count;
+    if(ds.today_practice_count!=null)APP_STATE.todayPractice=ds.today_practice_count;
+    HISTORY_DATA = {events:eventsData, lastStudy:results[1]||{}, loading:false};
+    renderHistory();fetchPreviews(HISTORY_DATA.events);
+  });
+}
+}
+window.onHistoryData=function(b64){
+try{
+var raw=JSON.parse(b64DecodeUtf8(b64));
+if(raw&&raw.success){
+  if(raw.access_token)APP_STATE.access_token=raw.access_token;
+  var eventsData = raw.events && raw.events.data && raw.events.data.items || raw.events && raw.events.items || [];
+  // 更新每日统计
+  var ds = raw.daily_stats && raw.daily_stats.data ? raw.daily_stats.data : raw.daily_stats || {};
+  if(ds){
+    if(ds.today_mastered_count!=null)APP_STATE.todayCount=ds.today_mastered_count;
+    if(ds.today_practice_count!=null)APP_STATE.todayPractice=ds.today_practice_count;
+  }
+  var lastStudyData = raw.last_study || {};
+  HISTORY_DATA = {events:eventsData, lastStudy:lastStudyData, loading:false};
+  renderHistory();fetchPreviews(HISTORY_DATA.events);
+  }else{
+  HISTORY_DATA.loading = false;
+  renderHistory();
+  }
+  }catch(e){HISTORY_DATA.loading = false;renderHistory();}
+  };
+function updateHomeData(raw){
+  // 更新首页统计数字（平滑过渡，不闪白）
+  var vs=document.querySelectorAll('.stat-value');
+  if(vs.length>=4&&APP_STATE.tab==='home'&&document.querySelector('.stats-grid')){
+    var vals=[APP_STATE.totalCount,APP_STATE.masteredCount,APP_STATE.favoritesCount,APP_STATE.todayCount];
+    for(var vi=0;vi<4;vi++){
+      var old=vs[vi].textContent;
+      var nu=String(vals[vi]);
+      if(old!==nu){
+        vs[vi].style.transition='opacity .2s ease,transform .2s ease';
+        vs[vi].style.opacity='0.3';
+        vs[vi].style.transform='scale(.92)';
+        (function(el,nv){
+          setTimeout(function(){
+            el.textContent=nv;
+            el.style.opacity='';
+            el.style.transform='';
+          },150);
+        })(vs[vi],nu);
+      }
+    }
+  }
+  // 更新继续上次学习面板（常驻，只改文字不重建）
+  var rp=document.getElementById('resumePanel');
+  if(rp){
+    var ls=APP_STATE.lastStudy;
+    if(ls&&ls.has_record){
+      rp.innerHTML='<div class="eyebrow">继续上次学习</div><div class="panel-title">'+esc(ls.category_name||'')+'</div><div class="panel-sub">'+fmtTime(ls.updated_at)+'</div>';
+    }
+  }
+}
+function render(){
+  let html = '<div class="page">';
+  if(APP_STATE.tab === 'library') html += renderLibrary();
+  else if(APP_STATE.tab === 'favorites') html += renderFavorites();
+  else if(APP_STATE.tab === 'me') html += renderMe();
+  else if(APP_STATE.tab === 'history') { document.getElementById('app').innerHTML=''; loadHistory(); return; }
+  else html += renderHome();
+  html += '</div>' + tabbar();
+  document.getElementById('app').innerHTML = html;
+}
+function normalizeCategories(raw){
+const root=raw&&raw.categories?raw.categories:raw;
+const arr=(root&&root.data&&root.data.items)||root.data||root.items||root;
+if(!Array.isArray(arr))return null;
+function norm(c){
+const children=(c.children||c.subcategories||c.chapters||[]).map(norm).filter(x=>x.name);
+// 按 display_order(sort_key)→id 排序（与网站一致）
+children.sort(function(a,b){var sa=a.sort_key||0,sb=b.sort_key||0;return sa!==sb?sa-sb:a.id-b.id});
+return {
+ id:c.id||c.category_id,
+ name:c.name||c.title||c.category_name||'未命名分类',
+ sort_key:c.sort_key||c.display_order||0,
+ questionCount:c.question_count||c.questions_count||c.count||0,
+ totalQuestionCount:c.total_question_count||c.totalQuestionCount||c.question_count||c.count||0,
+ children:children
+};
+}
+var result=arr.map(norm).filter(c=>c.name);
+// 根分类也按 display_order(sort_key)→id 排序
+result.sort(function(a,b){var sa=a.sort_key||0,sb=b.sort_key||0;return sa!==sb?sa-sb:a.id-b.id});
+return result;
+}
+window.onAppData=function(b64){
+try{
+const raw=JSON.parse(b64DecodeUtf8(b64));
+if(raw&&raw.success){
+const cats=normalizeCategories(raw.categories);
+if(cats&&cats.length)APP_STATE.categories=cats;
+const home=raw.home&&raw.home.data?raw.home.data:raw.home;
+if(home){
+if(home.total_questions!=null)APP_STATE.totalCount=home.total_questions;else if(home.totalCount!=null)APP_STATE.totalCount=home.totalCount;
+if(home.mastered_count!=null)APP_STATE.masteredCount=home.mastered_count;else if(home.masteredCount!=null)APP_STATE.masteredCount=home.masteredCount;
+if(home.today_count!=null)APP_STATE.todayCount=home.today_count;else if(home.todayCount!=null)APP_STATE.todayCount=home.todayCount;
+}
+// 从 total_stats 获取已掌握/总题数
+var ts = raw.total_stats && raw.total_stats.data ? raw.total_stats.data : raw.total_stats;
+if(ts){
+  if(ts.total_questions!=null)APP_STATE.totalCount=ts.total_questions;
+  if(ts.mastered_count!=null)APP_STATE.masteredCount=ts.mastered_count;
+}
+// 从 daily_stats 获取今日完成
+var ds = raw.daily_stats && raw.daily_stats.data ? raw.daily_stats.data : raw.daily_stats;
+if(ds){
+  if(ds.today_mastered_count!=null)APP_STATE.todayCount=ds.today_mastered_count;
+  if(ds.today_practice_count!=null)APP_STATE.todayPractice=ds.today_practice_count;
+}
+if(raw.access_token)APP_STATE.access_token=raw.access_token;
+if(raw.last_study&&raw.last_study.has_record)APP_STATE.lastStudy=raw.last_study;
+if(raw.favoritesCount!=null)APP_STATE.favoritesCount=raw.favoritesCount;
+if(APP_STATE.tab==='home'){updateHomeData(raw);}
+else if(APP_STATE.tab==='library' && cats && cats.length){render();}
+}
+}catch(e){}
+};
+decodeData();
+render();
+setTimeout(function(){callAndroid('requestAppData');},300);
+</script>
+</body>
+</html>

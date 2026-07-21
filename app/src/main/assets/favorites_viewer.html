@@ -67,6 +67,8 @@ body::-webkit-scrollbar { display:none; }
   cursor:pointer; flex-shrink:0; transition:all .15s var(--ease);
 }
 .topbar-back:active { background:var(--card-hover); transform:scale(0.9); }
+.topbar-home { width:38px; height:38px; border-radius:12px; border:1px solid var(--stroke); background:var(--card); color:var(--text-3); font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:all .15s var(--ease); }
+.topbar-home:active { background:var(--card-hover); transform:scale(0.9); }
 .topbar-title { flex:1; min-width:0; }
 .topbar-title h1 { font-size:17px; font-weight:700; color:var(--text); line-height:1.3;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -94,12 +96,11 @@ body::-webkit-scrollbar { display:none; }
 /* ===== 卡片列表 ===== */
 .list { padding:4px 16px 120px; }
 .card {
-  background:var(--card); border-radius:var(--radius); padding:26px 22px 22px 22px;
-  margin-bottom:16px; cursor:pointer; transition:all .15s var(--ease);
-  border:1px solid var(--stroke); position:relative; overflow:hidden;
-  box-shadow:var(--shadow);
-  animation:cardIn .4s var(--ease-bounce) both;
-  animation-delay:calc(var(--i) * 50ms);
+ background:var(--card); border-radius:var(--radius); padding:26px 22px 22px 22px;
+ margin-bottom:16px; cursor:pointer; transition:all .15s var(--ease);
+ border:1px solid var(--stroke); position:relative;
+ box-shadow:var(--shadow);
+ animation:cardIn .18s var(--ease) both;
 }
 @keyframes cardIn {
   from { opacity:0; transform:translateY(20px) scale(0.96); }
@@ -131,20 +132,36 @@ body::-webkit-scrollbar { display:none; }
 .card-preview {
   padding-left:12px; font-size:15px; line-height:1.85; color:var(--text-2);
   word-break:break-word;
+  opacity:0; transition:opacity .1s ease;
 }
+.card-preview.rendered { opacity:1; }
 .card-preview p { margin-bottom:10px; }
 .card-preview p:last-child { margin-bottom:0; }
 .card-preview .katex-display {
-  margin:10px 0; overflow-x:auto; overflow-y:hidden;
-  -webkit-overflow-scrolling:touch;
-  max-width:100%;
+ margin:10px 0; overflow-x:auto; overflow-y:hidden;
+ -webkit-overflow-scrolling:touch;
 }
 .card-preview .katex-display > .katex {
-  max-width:100%; overflow-x:auto; overflow-y:hidden;
+ overflow-x:auto; overflow-y:hidden;
 }
-.card-preview .katex {
-  font-size:1.02em; line-height:1.5;
-}
+.card-preview .katex { font-size:1.02em; line-height:1.5; }
+.preview-options{margin-top:8px;border-top:1px solid var(--stroke);padding-top:6px;}
+.preview-option{display:flex;gap:8px;padding:4px 0;font-size:14px;color:var(--text-2);}
+.preview-option .olabel{width:22px;height:22px;border-radius:6px;background:rgba(233,69,96,.1);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+/* expand-btn removed - no longer needed */
+/* 分类筛选按钮和抽屉 */
+.filter-trigger{display:flex;align-items:center;justify-content:center;gap:6px;width:calc(100% - 32px);margin:8px 16px;padding:10px 16px;border:1px solid var(--stroke);border-radius:12px;background:var(--card);color:var(--text-2);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s var(--ease);}
+.filter-trigger:active{transform:scale(.97);background:var(--card-hover);}
+.filter-trigger .arrow-down{font-size:10px;color:var(--text-3);}
+.filter-list{padding:4px 0 8px;}
+.filter-item{display:flex;align-items:center;gap:10px;width:100%;padding:12px 4px;border:0;background:transparent;color:var(--text-2);font-size:14px;text-align:left;cursor:pointer;border-radius:10px;transition:all .1s var(--ease);}
+.filter-item:active{background:var(--card-hover);}
+.filter-item.active{color:var(--accent);font-weight:600;}
+.filter-check{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;border:2px solid var(--stroke);font-size:13px;font-weight:700;flex-shrink:0;}
+.filter-item.active .filter-check{border-color:var(--accent);background:var(--accent);color:#fff;}
+/* 详情页导航按钮 */
+.nav-buttons { display:flex; gap:10px; margin-top:16px; justify-content:center; }
+.nav-buttons .fav-action { flex:1; max-width:160px; }
 
 /* ===== 空状态 ===== */
 .empty {
@@ -251,16 +268,16 @@ body::-webkit-scrollbar { display:none; }
 
 /* ===== KaTeX 排版核心：不溢出、不挤压 ===== */
 .block-content .katex-display {
-  margin:14px 0; padding:8px 4px;
-  overflow-x:auto; overflow-y:hidden;
-  -webkit-overflow-scrolling:touch;
+ margin:14px 0; padding:8px 4px;
+ overflow-x:auto; overflow-y:hidden;
+ -webkit-overflow-scrolling:touch;
 }
 .block-content .katex {
-  font-size:1.05em; line-height:1.5;
+ font-size:1.05em; line-height:1.5;
 }
 .block-content .katex-display > .katex {
-  white-space:nowrap;
-  max-width:100%; overflow-x:auto; overflow-y:hidden;
+ white-space:nowrap;
+ overflow-x:auto; overflow-y:hidden;
 }
 /* 行内公式不溢出 */
 .block-content .katex { overflow-wrap:break-word; }
@@ -279,15 +296,77 @@ body::-webkit-scrollbar { display:none; }
   margin:0 auto 16px; animation:spin .8s linear infinite;
 }
 @keyframes spin { to { transform:rotate(360deg); } }
+/* 预渲染用透明度过渡 */
+#app { transition: opacity .15s ease; }
+.collapsible .block-content { transition: opacity .15s ease; }
+/* ===== 交互按钮（收藏详情页） ===== */
+.fav-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.fav-action{min-height:44px;border-radius:14px;border:1px solid var(--stroke);background:rgba(255,255,255,.035);color:var(--text-2);font-size:13px;font-weight:700;padding:8px;cursor:pointer;transition:all .15s ease}
+.fav-action.on{background:rgba(233,69,96,.15);color:var(--accent);border-color:rgba(233,69,96,.3)}
+.fav-action.primary{border:0;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+.fav-action.wide{grid-column:span 2}
+/* Toast */
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:rgba(30,30,50,.96);border:1px solid var(--stroke);color:var(--text);border-radius:999px;padding:10px 18px;font-size:13px;z-index:200}
+/* Modal */
+.modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:center;justify-content:center}
+.modal-box{background:var(--surface);border-radius:var(--radius);padding:24px;width:90%;max-width:400px}
+.modal-box h3{font-size:17px;margin-bottom:14px}
+.modal-box textarea{width:100%;min-height:120px;border:1px solid var(--stroke);border-radius:12px;background:var(--bg);color:var(--text);padding:12px;font-size:14px;font-family:inherit}
+.modal-box .char-count{text-align:right;font-size:12px;color:var(--text-3);margin:6px 0 12px}
+.modal-box .save-btn{width:100%;padding:12px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-size:15px;font-weight:800;cursor:pointer}
+/* ===== 下拉刷新 ===== */
+.pull-refresh{position:absolute;left:0;right:0;top:-56px;height:56px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--text-3);font-size:13px;transition:transform .3s ease;z-index:10}
+.pull-refresh .pr-spinner{width:20px;height:20px;border:2px solid var(--card);border-top-color:var(--accent);border-radius:50%;display:none}
+.pull-refresh.pulling .pr-spinner{display:block;animation:spin .8s linear infinite}
+.pull-refresh .pr-text{transition:color .2s ease}
+.pull-refresh.can-release .pr-text{color:var(--accent);font-weight:600}
+
+/* ===== 分类筛选抽屉（与 app_frontend.html 一致） ===== */
+.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.56);z-index:120;display:flex;align-items:flex-end;animation:fadeIn .2s ease both;}
+.drawer{width:100%;max-height:72vh;background:var(--surface);border-radius:18px 18px 0 0;border:1px solid var(--stroke);box-shadow:0 -10px 40px rgba(0,0,0,.42);padding:18px 16px 24px;overflow:auto;animation:drawerIn .26s var(--ease) both;}
+@keyframes drawerIn{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.drawer-handle{width:42px;height:4px;border-radius:99px;background:var(--text-3);opacity:.45;margin:0 auto 16px;}
+.drawer-title{font-size:18px;font-weight:800;margin-bottom:4px;}
+.drawer-sub{font-size:12px;color:var(--text-3);margin-bottom:16px;}
 </style>
 </head>
 <body>
 <div id="app"><div class="loading"><div class="loading-spinner"></div><p>加载中…</p></div></div>
 <script>
 let FAVORITES_DATA = [];
-let currentCategory = 'all';
 let currentDetail = -1;
 let isDetailView = false;
+let savedListHTML = '';
+let selectedPaths = []; // [] = all, otherwise array of selected category paths
+let fv_nav = []; // navigation stack: [{view:'drawer'|'detail'}]
+let fv_popReady = false;
+let _popGuard = false; // guard against popstate triggered by our own history.back()
+// 物理返回拦截：popstate 事件
+window.addEventListener('popstate', function(e){
+  if (!fv_popReady || _popGuard) { _popGuard = false; return; }
+  if (fv_nav.length > 0) {
+    var prev = fv_nav.pop();
+    if (prev.view === 'drawer') {
+      var el = document.getElementById('filterDrawer');
+      if (el) el.remove();
+    } else if (prev.view === 'detail') {
+      goBackToList();
+    }
+  } else {
+    bridgeBack();
+  }
+});
+// 桥接返回
+function bridgeBack() {
+  if (window.Android && typeof window.Android.closeFavorites === 'function') {
+    window.Android.closeFavorites();
+  } else { window.history.back(); }
+}
+function bridgeHome() {
+  if (window.Android && typeof window.Android.goHome === 'function') {
+    window.Android.goHome();
+  } else { window.location.href = 'file:///android_asset/app_frontend.html'; }
+}
 
 // KaTeX 渲染配置
 const KATEX_OPTIONS = {
@@ -317,14 +396,28 @@ function loadFromHash() {
   if (hash.startsWith('#data=')) {
     try { FAVORITES_DATA = JSON.parse(b64DecodeUtf8(hash.substring(6))); }
     catch(e) { FAVORITES_DATA = []; }
+    // 缓存到 localStorage（离线可用）
+    try{localStorage.setItem('fav_cache',JSON.stringify(FAVORITES_DATA));}catch(e){}
+  } else {
+    // 尝试从 localStorage 加载缓存
+    try{
+      var cached = localStorage.getItem('fav_cache');
+      if(cached) { FAVORITES_DATA = JSON.parse(cached); }
+    }catch(e){}
   }
   renderList();
 }
 window.init = function(d) {
   try { FAVORITES_DATA = JSON.parse(d); } catch(e) { FAVORITES_DATA = []; }
+  // 缓存到 localStorage
+  try{localStorage.setItem('fav_cache',JSON.stringify(FAVORITES_DATA));}catch(e){}
   renderList();
 };
 loadFromHash();
+// 初始化 popstate 监听
+setTimeout(function(){ fv_popReady = true; history.replaceState({fv_view:'base'}, ''); },0);
+// 进入时触发静默同步
+if(window.Android&&window.Android.syncFavorites){setTimeout(function(){window.Android.syncFavorites();document.getElementById('syncStatus').textContent='同步中…';setTimeout(function(){document.getElementById('syncStatus').textContent=''},8000)},500)}
 
 function esc(s) { return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function catKey(c) {
@@ -333,7 +426,107 @@ function catKey(c) {
 function catName(c) {
   return { all:'全部','收藏':'收藏','不熟练':'不熟练','完全不会':'完全不会','掌握':'已掌握' }[c] || c;
 }
-
+// 生成收藏页卡片预览 HTML：使用 CSS line-clamp:9 控制显示行数
+function favCardPreview(q, idx) {
+  var stem = q.stemHTML || q.stemPreview || '无题目内容';
+  var opts = q.optionsHTML || '';
+  var fullContent = stem + opts;
+  return '<div class="card-preview" data-full="' + idx + '">' + fullContent + '</div>';
+}
+// 收藏页导航
+function showPrev() {
+  var filtered = getFilteredFavorites();
+  var cur = FAVORITES_DATA[currentDetail];
+  var fi = filtered.indexOf(cur);
+  if (fi > 0) showDetail(FAVORITES_DATA.indexOf(filtered[fi - 1]));
+}
+function showNext() {
+  var filtered = getFilteredFavorites();
+  var cur = FAVORITES_DATA[currentDetail];
+  var fi = filtered.indexOf(cur);
+  if (fi < filtered.length - 1) showDetail(FAVORITES_DATA.indexOf(filtered[fi + 1]));
+}
+// 分类抽屉筛选
+function getAllPaths() {
+  var paths = {};
+  FAVORITES_DATA.forEach(function(q){ if(q.categoryPath) paths[q.categoryPath]=true; });
+  return Object.keys(paths).sort();
+}
+function getFilteredFavorites() {
+  var all = FAVORITES_DATA;
+  if (selectedPaths.length > 0) {
+    all = all.filter(function(q){ return q.categoryPath && selectedPaths.indexOf(q.categoryPath) >= 0; });
+  }
+  return all;
+}
+function togglePath(path) {
+  var idx = selectedPaths.indexOf(path);
+  if (idx >= 0) selectedPaths.splice(idx, 1);
+  else selectedPaths.push(path);
+  refreshListView();
+}
+function selectAllPaths() {
+  selectedPaths = [];
+  refreshListView();
+}
+function filterLabel() {
+  if (selectedPaths.length === 0) return '全部收藏';
+  return '已选 ' + selectedPaths.length + ' 个分类';
+}
+function isPathSelected(path) {
+  return selectedPaths.indexOf(path) >= 0;
+}
+function showFilterDrawer() {
+  if (fv_nav.length > 0 && fv_nav[fv_nav.length-1].view === 'drawer') return; // already open
+  fv_nav.push({view:'drawer'});
+  history.pushState({fv_view:'drawer'}, '');
+  renderFilterDrawer();
+}
+function renderFilterDrawer() {
+  // 移除旧抽屉
+  var old = document.getElementById('filterDrawer');
+  if (old) old.remove();
+  var paths = getAllPaths();
+  var html = '<div class="drawer-mask" onclick="if(event.target===this)closeFilterDrawer()"><div class="drawer">'
+    + '<div class="drawer-handle"></div>'
+    + '<div class="drawer-title">题目分类</div>'
+    + '<div class="drawer-sub">可多选，点选即生效</div>'
+    + '<div class="filter-list">'
+    + '<button class="filter-item' + (selectedPaths.length===0?' active':'') + '" data-path="__all__"><span class="filter-check">' + (selectedPaths.length===0?'✓':'') + '</span>全部收藏</button>';
+  paths.forEach(function(p){
+    var sel = isPathSelected(p);
+    html += '<button class="filter-item' + (sel?' active':'') + '" data-path="' + p.replace(/&/g,'&amp;').replace(/"/g,'"') + '"><span class="filter-check">' + (sel?'✓':'') + '</span>' + esc(p) + '</button>';
+  });
+  html += '</div></div></div>';
+  var div = document.createElement('div');
+  div.id = 'filterDrawer';
+  div.innerHTML = html;
+  // 点击事件委托
+  div.addEventListener('click', function(e){
+    var item = e.target.closest('.filter-item');
+    if (!item) return;
+    var path = item.dataset.path;
+    if (path === '__all__') { selectAllPaths(); closeFilterDrawer(); }
+    else {
+      togglePath(path);
+      // 重新渲染抽屉内的按钮状态（✓ + active 类），保持打开
+      renderFilterDrawer();
+    }
+  });
+  document.body.appendChild(div);
+}
+function closeFilterDrawer() {
+  var el = document.getElementById('filterDrawer');
+  if (!el) return;
+  el.remove();
+  // 清理 nav 栈
+  while (fv_nav.length > 0 && fv_nav[fv_nav.length-1].view === 'drawer') {
+    fv_nav.pop();
+  }
+  // 同步移除 history 状态，用 _popGuard 防止 popstate 误触发
+  _popGuard = true;
+  history.back();
+}
 function renderMath(container) {
   try {
     renderMathInElement(container, KATEX_OPTIONS);
@@ -343,14 +536,12 @@ function renderMath(container) {
 function renderList() {
   isDetailView = false;
   const app = document.getElementById('app');
-  const cats = ['all', ...new Set(FAVORITES_DATA.map(q => q.category))];
-  const filtered = currentCategory === 'all'
-    ? FAVORITES_DATA
-    : FAVORITES_DATA.filter(q => q.category === currentCategory);
+  const filtered = getFilteredFavorites();
+  const paths = getAllPaths();
 
   let cardsHtml = '';
   if (filtered.length === 0) {
-    cardsHtml = '<div class="empty"><div class="empty-emoji">📭</div><div class="empty-text">暂无收藏题目</div><div class="empty-sub">登录后自动同步</div></div>';
+    cardsHtml = '<div class="empty"><div class="empty-emoji">📭</div><div class="empty-text">暂无收藏题目</div><div class="empty-sub">收藏后会显示在这里</div></div>';
   } else {
     cardsHtml = filtered.map((q, i) => {
       const idx = FAVORITES_DATA.indexOf(q);
@@ -361,36 +552,106 @@ function renderList() {
         +   '<span class="card-tag cat-' + ck + '">' + catName(q.category) + '</span>'
         +   '<span class="card-src">' + esc(q.source) + ' · #' + (q.questionNumber||'') + '</span>'
         + '</div>'
-        + '<div class="card-preview">' + (q.stemHTML || q.stemPreview || '无题目内容') + '</div>'
+        + favCardPreview(q, idx)
         + '</div>';
     }).join('');
   }
 
-  app.innerHTML = '<div class="page">'
+  app.innerHTML = '<div class="page" id="favPage">'
     + '<div class="topbar">'
-    +   '<button class="topbar-back" onclick="goBack()">←</button>'
+    +   '<button class="topbar-back" onclick="bridgeBack()">←</button>'
     +   '<div class="topbar-title"><h1>收藏题目</h1>'
-    +   '<div class="sub">共 ' + FAVORITES_DATA.length + ' 题 · 已缓存到本地</div></div>'
+    +   '<div class="sub">共 ' + FAVORITES_DATA.length + ' 题 · <span id="syncStatus">已缓存到本地</span></div></div>'
+    +   '<button class="topbar-home" onclick="bridgeHome()">⌂</button>'
     + '</div>'
-    + '<div class="tabs">'
-    +   cats.map(function(c){ return '<button class="tab ' + (c===currentCategory?'active':'') + '" onclick="setCategory(\'' + c + '\')">' + catName(c) + '</button>'; }).join('')
+    + '<div style="position:relative;overflow:hidden">'
+    +   '<div class="pull-refresh" id="pullRefresh"><span class="pr-spinner"></span><span class="pr-text" id="prText">↓ 下拉刷新</span></div>'
+    +   '<button class="filter-trigger" onclick="showFilterDrawer()">' + esc(filterLabel()) + ' <span class="arrow-down">▼</span></button>'
+    +   '<div class="list">' + cardsHtml + '</div>'
     + '</div>'
-    + '<div class="list">' + cardsHtml + '</div>'
-    + '<button class="fab-back" onclick="goBack()">返回</button>'
+    + '<button class="fab-back" onclick="bridgeBack()">返回</button>'
     + '</div>';
 
   if (filtered.length > 0) {
-    setTimeout(function(){ renderMath(app); }, 150);
+    setTimeout(function(){
+      var cards = app.querySelectorAll('.card-preview');
+      for(var ci=0;ci<cards.length;ci++){
+        try{renderMathInElement(cards[ci],KATEX_OPTIONS);}catch(e){}
+        cards[ci].classList.add('rendered');
+      }
+    }, 80);
   }
 }
 
-function setCategory(c) { currentCategory = c; renderList(); }
+// 刷新列表视图：只更新列表内容和筛选按钮文字
+function refreshListView() {
+  var app = document.getElementById('app');
+  var filtered = getFilteredFavorites();
+
+  // 更新筛选按钮文字
+  var trigger = app.querySelector('.filter-trigger');
+  if (trigger) trigger.innerHTML = esc(filterLabel()) + ' <span class="arrow-down">▼</span>';
+
+  // 更新列表内容
+  var listEl = app.querySelector('.list');
+  if (listEl) {
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<div class="empty"><div class="empty-emoji">📭</div><div class="empty-text">暂无收藏题目</div><div class="empty-sub">收藏后会显示在这里</div></div>';
+    } else {
+      listEl.innerHTML = filtered.map(function(q, i){
+        var idx = FAVORITES_DATA.indexOf(q);
+var ck = catKey(q.category);
+return '<div class="card" style="--i:' + i + '" onclick="showDetail(' + idx + ')">'
++ '<div class="card-bar cat-' + ck + '"></div>'
++ '<div class="card-head">'
++   '<span class="card-tag cat-' + ck + '">' + catName(q.category) + '</span>'
++   '<span class="card-src">' + esc(q.source) + ' · #' + (q.questionNumber||'') + '</span>'
++ '</div>'
++ favCardPreview(q, idx)
+          + '</div>';
+      }).join('');
+    }
+    // 逐个渲染卡片预览中的 KaTeX，渲染后渐显
+    setTimeout(function(){
+      var cards = listEl.querySelectorAll('.card-preview');
+      for(var ci=0;ci<cards.length;ci++){
+        try{renderMathInElement(cards[ci],KATEX_OPTIONS);}catch(e){}
+        cards[ci].classList.add('rendered');
+      }
+    }, 50);
+  }
+}
+
+function goBackToList() {
+  // 从详情返回列表
+  if (savedListHTML) {
+    document.getElementById('app').innerHTML = savedListHTML;
+    savedListHTML = '';
+    isDetailView = false;
+    currentDetail = -1;
+  } else {
+    renderList();
+  }
+  // 移除 detail 状态
+  if (fv_nav.length > 0 && fv_nav[fv_nav.length-1].view === 'detail') {
+    fv_nav.pop();
+    _popGuard = true;
+    history.back();
+  }
+}
 
 function showDetail(idx) {
   var q = FAVORITES_DATA[idx]; if (!q) return;
   currentDetail = idx; isDetailView = true;
   var app = document.getElementById('app');
+  savedListHTML = app.innerHTML;
   var ck = catKey(q.category);
+
+  // Push detail state
+  if (fv_nav.length === 0 || fv_nav[fv_nav.length-1].view !== 'detail') {
+    fv_nav.push({view:'detail', idx: idx});
+    history.pushState({fv_view:'detail'}, '');
+  }
 
   // 选项 HTML：如果有选项，放在题目 block 内部（不折叠）
   var optionsInBlock = '';
@@ -424,9 +685,10 @@ function showDetail(idx) {
 
   app.innerHTML = '<div class="page">'
     + '<div class="topbar">'
-    +   '<button class="topbar-back" onclick="renderList()">←</button>'
+    +   '<button class="topbar-back" onclick="goBackToList()">←</button>'
     +   '<div class="topbar-title"><h1>' + esc(q.source) + '</h1>'
     +   '<div class="sub">题目 #' + (q.questionNumber||idx+1) + ' · ' + catName(q.category) + '</div></div>'
+    +   '<button class="topbar-home" onclick="bridgeHome()">⌂</button>'
     + '</div>'
     + '<div class="detail-body">'
     +   '<div class="detail-head">'
@@ -440,19 +702,85 @@ function showDetail(idx) {
     +   '</div>'
     +   answerHtml
     +   solutionHtml
-    +   '<button class="fab-back" onclick="renderList()">返回列表</button>'
+    +   favActionsHtml(q)
+    +   (function(){
+      var filtered = getFilteredFavorites();
+      var fi = filtered.indexOf(q);
+      var prevBtn = fi > 0 ? '<button class="fav-action" onclick="showPrev()">← 上一题</button>' : '';
+      var nextBtn = fi < filtered.length - 1 ? '<button class="fav-action" onclick="showNext()">下一题 →</button>' : '';
+      return '<div class="nav-buttons">' + prevBtn + nextBtn + '</div>';
+    })()
+    + '<button class="fab-back" onclick="goBackToList()">返回列表</button>'
     + '</div>'
     + '</div>';
 
-  // 渲染题目区域的 KaTeX（含选项）
+  // 渲染题目区域的 KaTeX
   setTimeout(function(){
-    var stemBlock = app.querySelector('.block .block-content');
-    if (stemBlock) renderMath(stemBlock);
-    var optsBlock = app.querySelector('.block-options');
-    if (optsBlock) renderMath(optsBlock);
-  }, 200);
+    var blocks = app.querySelectorAll('.block-content, .block-options');
+    for(var bi=0;bi<blocks.length;bi++){
+      try{renderMathInElement(blocks[bi],KATEX_OPTIONS);}catch(e){}
+    }
+  }, 50);
+  setTimeout(ub, 120);
+  // 如果答案或解析为空，尝试从 API 单独拉取题目详情
+  if ((!q.answerHTML || q.answerHTML.indexOf('<p></p>')>=0) && (!q.solutionHTML || q.solutionHTML.length<5) && q.id && navigator.onLine) {
+    var tk = '';
+    try{tk=localStorage.getItem('daguan_token')||''}catch(e){}
+    if(tk){
+      fetch('/api/questions/'+q.id,{headers:{'Authorization':'Bearer '+tk}})
+        .then(function(r){return r.json()})
+        .then(function(qd){
+          if(!qd||!qd.id)return;
+          // 更新当前题目的 answerHTML 和 solutionHTML
+          var ans = qd.answer || {};
+          var refAns = ans.reference_answer_md || qd.correct_answer || '';
+          if(refAns){q.answerHTML='<p>'+refAns+'</p>';FAVORITES_DATA[idx]=q;try{localStorage.setItem('fav_cache',JSON.stringify(FAVORITES_DATA));}catch(e){}}
+          var expl = qd.answer_explanation || (qd.document?qd.document.explanation_md:'') || '';
+          if(expl){q.solutionHTML=expl;FAVORITES_DATA[idx]=q;try{localStorage.setItem('fav_cache',JSON.stringify(FAVORITES_DATA));}catch(e){}}
+          if(refAns||expl)showDetail(idx);
+        })
+        .catch(function(){});
+    }
+  }
 }
 
+window.updateFavoritesData = function(b64){
+  try{
+    var data = JSON.parse(b64DecodeUtf8(b64));
+    if(Array.isArray(data) && data.length >= 0){
+      if(JSON.stringify(data)===JSON.stringify(FAVORITES_DATA)) return;
+      // 保留本地已有笔记
+      var oldNotes = {};
+      FAVORITES_DATA.forEach(function(o){if(o.id&&o.note)oldNotes[o.id]=o.note});
+      data.forEach(function(item){if(item.id&&oldNotes[item.id])item.note=oldNotes[item.id]});
+      FAVORITES_DATA = data;
+      // 同步后更新 localStorage 缓存
+      try{localStorage.setItem('fav_cache',JSON.stringify(data));}catch(e){}
+      updateListInPlace(data);
+      // 如果在详情页，根据当前题目 id 重新渲染详情（确保答案/解析最新）
+      if(isDetailView && currentDetail >= 0 && currentDetail < FAVORITES_DATA.length){
+        var oldId = FAVORITES_DATA[currentDetail] ? FAVORITES_DATA[currentDetail].id : null;
+        if(oldId){
+          // 找更新后的数据中同 id 的题目
+          for(var di=0; di<FAVORITES_DATA.length; di++){
+            if(FAVORITES_DATA[di].id === oldId){
+              showDetail(di);
+              break;
+            }
+          }
+        }
+      }
+    }
+  }catch(e){}
+};
+function updateListInPlace(data){
+  var app = document.getElementById('app');
+  // 更新顶部统计数字
+  var subEl = app.querySelector('.topbar .sub');
+  if(subEl) subEl.innerHTML = '共 ' + data.length + ' 题 · <span id="syncStatus">已同步</span>';
+  // 直接刷新当前列表视图（保留 topbar 和页面结构）
+  refreshListView();
+}
 function toggleBlock(btn) {
   var wrap = btn.nextElementSibling;
   if (!wrap) return;
@@ -478,9 +806,13 @@ function toggleBlock(btn) {
     requestAnimationFrame(function(){
       var targetHeight = wrap.scrollHeight;
       wrap.style.maxHeight = targetHeight + 'px';
-      // 渲染折叠区域内的公式
+      // 先隐藏避免公式闪白
       var content = wrap.querySelector('.block-content');
-      if (content) renderMath(content);
+      if (content) {
+        content.style.opacity = '0';
+        renderMath(content);
+        setTimeout(function(){ content.style.opacity = '1'; }, 100);
+      }
       // 动画结束后移除固定高度，允许自适应
       setTimeout(function(){
         wrap.style.maxHeight = 'none';
@@ -490,10 +822,173 @@ function toggleBlock(btn) {
 }
 
 function goBack() {
-  if (isDetailView) { renderList(); }
-  else if (window.Android) { window.Android.closeFavorites(); }
-  else { renderList(); }
+  // 从详情返回列表，同时处理 nav 栈
+  if (isDetailView) {
+    isDetailView = false;
+    if (savedListHTML) {
+      document.getElementById('app').innerHTML = savedListHTML;
+      refreshListView();
+    } else {
+      renderList();
+    }
+    // 从 nav 栈弹出 detail
+    if (fv_nav.length > 0 && fv_nav[fv_nav.length-1].view === 'detail') {
+      fv_nav.pop();
+    }
+  }
+  else if (fv_nav.length > 0) {
+    // 有栈项：回到上一个状态
+    var prev = fv_nav.pop();
+    if (prev.view === 'drawer') closeFilterDrawer();
+    else if (prev.view === 'detail') goBackToList();
+  }
+  else { bridgeBack(); }
 }
+// ===== 收藏详情交互按钮 =====
+function toast(m){var old=document.querySelector('.toast');if(old)old.remove();var t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove()},1200)}
+function bridge(n,a){try{if(window.Android&&typeof window.Android[n]=='function'){if(a===void 0)window.Android[n]();else window.Android[n](String(a));return true}}catch(e){}return false}
+function cq(){return FAVORITES_DATA[currentDetail]||{}}
+function qi(q){return q.id||q.question_id||''}
+function isFav(q){return!!(q.rawFavoritedAt)}
+function mast(q){return q.rawMastery||''}
+function gNote(q){return q.note||''}
+function hasNote(q){return!!gNote(q)}
+// 更新交互按钮状态（根据当前题目数据刷新 DOM）
+function ub(){
+  var q=cq();if(!q)return;
+  document.querySelectorAll('.fav-action').forEach(function(b){
+    var a=b.getAttribute('data-a');if(!a)return;
+    if(a=='fav'){b.classList.toggle('on',isFav(q));b.textContent=isFav(q)?'✓已收藏':'☆收藏'}
+    else if(a=='mastered'||a=='familiar'||a=='unknown'){
+      var m=mast(q);
+      var matched=(a=='mastered'&&m=='mastered')||(a=='familiar'&&m=='needs_practice')||(a=='unknown'&&m=='not_known');
+      b.classList.toggle('on',matched);
+      var t=a=='mastered'?'掌握':a=='familiar'?'不熟练':'不会';
+      b.textContent=(matched?'✓ ':'')+t}
+    b.disabled=false; // 恢复可用
+  });
+  var nb=document.getElementById('favNoteBtn');if(nb)nb.textContent=hasNote(q)?'✏编辑笔记':'➕添加笔记'
+}
+// Java 异步回调：action 完成后调用此函数刷新按钮状态
+window.onPracticeActionComplete = function(){ ub(); };
+function act(a){
+  var q=cq(),id=qi(q);
+  if(!id||!q)return;
+  if(!navigator.onLine){toast('网络异常');return}
+  // 禁用按钮防重复点击
+  document.querySelectorAll('.fav-action').forEach(function(b){b.disabled=true});
+  if(a=='fav'){
+    if(isFav(q)){q.rawFavoritedAt='';var idx=FAVORITES_DATA.indexOf(q);if(idx>=0)FAVORITES_DATA.splice(idx,1);bridge('practiceAction','fav_false|'+id);toast('已取消收藏');goBack();return}
+    else{toast('请先在练习页收藏');ub();return}
+  }else{
+    var m=mast(q);
+    var already=(a=='mastered'&&m=='mastered')||(a=='familiar'&&m=='needs_practice')||(a=='unknown'&&m=='not_known');
+    if(already){
+      q.rawMastery='not_started';
+      bridge('practiceAction','not_started|'+id);
+      toast('已取消'+(a=='mastered'?'掌握':a=='familiar'?'不熟练':'不会'))
+    }else{
+      var apiAction=a;
+      if(a=='familiar'){q.rawMastery='needs_practice';apiAction='needs_practice'}
+      else if(a=='unknown'){q.rawMastery='not_known';apiAction='not_known'}
+      else if(a=='mastered'){q.rawMastery='mastered';apiAction='mastered'}
+      toast('已标记'+(a=='mastered'?'掌握':a=='familiar'?'不熟练':'不会'));
+      bridge('practiceAction',apiAction+'|'+id)
+    }
+  }
+  setTimeout(function(){ub()},200) // 乐观更新（Java 回调会再次刷新）
+}
+function openNote(){
+ var q=cq(),id=qi(q);
+ if(!id||!q)return;
+ if(!navigator.onLine){toast('网络异常');return}
+ var existing=gNote(q);
+ var d=document.createElement('div');d.className='modal';
+ var bx=document.createElement('div');bx.className='modal-box';
+ bx.innerHTML='<h3>'+(existing?'编辑笔记':'添加笔记')+'</h3><textarea id="noteTextarea" maxlength="2000">'+esc(existing)+'</textarea><div class="char-count"><span id="noteCount">'+existing.length+'</span>/2000</div><button class="save-btn" id="noteSave">保存笔记</button><button class="fav-action wide" id="noteCancel" style="margin:8px 0 0">取消</button>';d.appendChild(bx);document.body.appendChild(d);
+ var ta=bx.querySelector('#noteTextarea');ta.focus();ta.selectionStart=ta.value.length;
+ ta.addEventListener('input',function(){document.getElementById('noteCount').textContent=ta.value.length});
+ bx.querySelector('#noteSave').addEventListener('click',function(){var txt=ta.value;q.note=txt;d.remove();ub();toast('笔记已保存');bridge('practiceAction','note|'+id+'|'+encodeURIComponent(txt))});
+ bx.querySelector('#noteCancel').addEventListener('click',function(){d.remove()})
+}
+function favActionsHtml(q){
+ return '<div class="fav-actions">'
+ + '<button class="fav-action primary" data-a="fav" onclick="act(\'fav\')">'+(isFav(q)?'✓已收藏':'☆收藏')+'</button>'
+ + '<button class="fav-action" data-a="mastered" onclick="act(\'mastered\')">掌握</button>'
+ + '<button class="fav-action" data-a="familiar" onclick="act(\'familiar\')">不熟练</button>'
+ + '<button class="fav-action" data-a="unknown" onclick="act(\'unknown\')">不会</button>'
+ + '<button class="fav-action wide" id="favNoteBtn" onclick="openNote()">'+(hasNote(q)?'✏编辑笔记':'➕添加笔记')+'</button>'
+ + '</div>';
+}
+// ===== 下拉刷新：仅限列表页 =====
+var pullState = {startY:0, pulling:false, moved:false};
+var PULL_THRESHOLD = 60; // px
+function initPullRefresh(){
+ var listEl = document.querySelector('.list');
+ if(!listEl) return;
+ listEl.addEventListener('touchstart', function(e){
+   if(isDetailView || listEl.scrollTop > 0) return;
+   pullState.startY = e.touches[0].pageY;
+   pullState.pulling = false;
+   pullState.moved = false;
+ }, {passive:true});
+ listEl.addEventListener('touchmove', function(e){
+   if(isDetailView || pullState.startY === 0) return;
+   var dy = e.touches[0].pageY - pullState.startY;
+   if(dy <= 0) return;
+   if(listEl.scrollTop > 0) return;
+   e.preventDefault();
+   pullState.moved = true;
+   var pr = document.getElementById('pullRefresh');
+   if(!pr) return;
+   if(dy >= PULL_THRESHOLD){
+     pr.classList.add('can-release');
+     document.getElementById('prText').textContent = '释放刷新';
+   }else{
+     pr.classList.remove('can-release');
+     document.getElementById('prText').textContent = '↓ 下拉刷新';
+   }
+   // 跟随手指位移
+   var offset = Math.min(dy * 0.4, 40);
+   pr.style.transform = 'translateY(' + (56 + offset) + 'px)';
+ }, {passive:false});
+ listEl.addEventListener('touchend', function(e){
+   if(!pullState.moved || isDetailView) return;
+   var pr = document.getElementById('pullRefresh');
+   if(pr){
+     pr.style.transform = '';
+     pr.classList.remove('can-release');
+   }
+   var dy = e.changedTouches[0].pageY - pullState.startY;
+   if(dy >= PULL_THRESHOLD && window.Android && window.Android.syncFavorites){
+     // 触发刷新
+     document.getElementById('prText').textContent = '刷新中…';
+     pr.classList.add('pulling');
+     document.getElementById('syncStatus').textContent = '同步中…';
+     window.Android.syncFavorites();
+     setTimeout(function(){
+       pr.classList.remove('pulling');
+       document.getElementById('prText').textContent = '↓ 下拉刷新';
+     }, 5000);
+   }
+   pullState.startY = 0;
+   pullState.pulling = false;
+   pullState.moved = false;
+ }, {passive:true});
+}
+// 初始化和每次列表渲染后重新绑定
+setTimeout(initPullRefresh, 400);
+// 覆盖 renderList 和 refreshListView 以在渲染后重新绑定
+var origRenderList = renderList;
+renderList = function(){
+  origRenderList.apply(this, arguments);
+  setTimeout(initPullRefresh, 250);
+};
+var origRefreshListView = refreshListView;
+refreshListView = function(){
+  origRefreshListView.apply(this, arguments);
+  setTimeout(initPullRefresh, 150);
+};
 </script>
 </body>
 </html>

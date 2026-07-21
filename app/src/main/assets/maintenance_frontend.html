@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<style>
+:root{--bg:#0f0f1a;--card:#1e1e32;--stroke:rgba(255,255,255,.06);--accent:#e94560;--accent-2:#7c4dff;--amber:#fbbf24;--blue:#4fc3f7;--text:#f0f0f5;--text-2:#a0a0b8;--text-3:#6b6b85;--shadow:0 2px 12px rgba(0,0,0,.3);--ease:cubic-bezier(.22,.61,.36,1);--radius:16px}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif}body{display:flex;align-items:center;justify-content:center;padding:22px 16px}.page{width:100%;max-width:420px;animation:in .32s var(--ease) both}@keyframes in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}.card{background:var(--card);border:1px solid var(--stroke);border-radius:18px;box-shadow:var(--shadow);padding:28px 22px;text-align:center;margin-bottom:14px}.icon{width:76px;height:76px;border-radius:24px;margin:0 auto 18px;background:rgba(251,191,36,.12);color:var(--amber);display:flex;align-items:center;justify-content:center;font-size:34px}.eyebrow{font-size:12px;color:var(--accent);font-weight:800;margin-bottom:8px}.title{font-size:22px;font-weight:850;margin-bottom:10px}.desc{font-size:13px;color:var(--text-3);line-height:1.8;margin-bottom:22px}.btn{height:46px;border:0;border-radius:14px;font-size:14px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 4px 20px rgba(233,69,96,.28);padding:0 24px;cursor:pointer}.btn:active{transform:scale(.96)}.sub{font-size:12px;color:var(--text-3);margin-top:14px;line-height:1.6}
+/* 收藏卡片 */
+.fav-card{background:var(--card);border:1px solid var(--stroke);border-radius:18px;box-shadow:var(--shadow);padding:22px;cursor:pointer;transition:all .15s var(--ease);margin-bottom:14px}.fav-card:active{transform:scale(.97)}.fav-row{display:flex;align-items:center;gap:14px}.fav-icon{width:48px;height:48px;border-radius:16px;background:rgba(233,69,96,.12);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}.fav-info{flex:1;min-width:0}.fav-info .fav-title{font-size:16px;font-weight:700;color:var(--text)}.fav-info .fav-sub{font-size:12px;color:var(--text-3);margin-top:2px}.fav-count{font-size:14px;font-weight:800;color:var(--accent);flex-shrink:0}</style>
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <div class="icon">!</div>
+    <div class="eyebrow">维护中</div>
+    <div class="title">网站正在维护</div>
+    <div class="desc">检测到大观园页面正在维护或升级。App 已暂停登录检测和后台同步，避免误判登录状态。</div>
+    <button class="btn" onclick="retry()">稍后重试</button>
+  </div>
+  <div class="fav-card" id="favCard" onclick="openFav()">
+    <div class="fav-row">
+      <div class="fav-icon">★</div>
+      <div class="fav-info">
+        <div class="fav-title">收藏题目</div>
+        <div class="fav-sub">离线缓存，断网/维护时可用</div>
+      </div>
+      <div class="fav-count" id="favCount">0 题</div>
+    </div>
+  </div>
+  <div class="sub">收藏缓存仍保留在本地，维护结束后会自动恢复。维护期间不同步数据。</div>
+</div>
+<script>
+function b64d(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new TextDecoder('utf-8').decode(a)}
+(function(){
+  var h=location.hash||'';
+  if(h.startsWith('#data=')) try {
+    var d=JSON.parse(b64d(h.substring(6)));
+    if(d.favoritesCount>=0) document.getElementById('favCount').textContent=d.favoritesCount+' 题';
+  }catch(e){}
+})();
+function openFav(){if(window.Android&&window.Android.openFavorites)window.Android.openFavorites()}
+function retry(){location.reload();if(window.Android&&window.Android.openWebHome)window.Android.openWebHome()}
+</script>
+</body>
+</html>

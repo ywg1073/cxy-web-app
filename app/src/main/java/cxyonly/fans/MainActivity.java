@@ -2,6 +2,9 @@ package cxyonly.fans;
 
 import android.annotation.SuppressLint;
 import android.app.Dialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -18,9 +21,16 @@ import android.view.ViewGroup;
 import android.view.WindowInsetsController;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
+import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.widget.Button;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -41,8 +51,14 @@ public class MainActivity extends AppCompatActivity {
     private static final String LOGIN_URL = "https://cxyonly.fans/m/login?redirect=/m/home";
     private static final String HOME_PAGE_URL = "https://cxyonly.fans/m/home";
     private static final String WECHAT_PACKAGE = "com.tencent.mm";
+    private static final String PREFS_AUTH = "auth_prefs";
+    private static final String KEY_TOKEN = "cached_token";
+    private static final String KEY_CSRF = "cached_csrf";
 
     private WebView webView;
+    private WebView backgroundWebView;
+    private String cachedAuthToken = ""; // 缓存 JWT token，避免从 WebView 异步读取
+    private String cachedCsrfToken = ""; // 缓存 CSRF token，API PATCH/PUT 必需
     private SwipeRefreshLayout swipeRefresh;
     private View progressBar;
     private FrameLayout loadingOverlay;
@@ -66,18 +82,37 @@ public class MainActivity extends AppCompatActivity {
     private boolean isLoggedIn = false;
     private boolean loginCheckInProgress = false;
 
-    private String lastPageUrl = null;
+    private java.util.Stack<String> pageHistory = new java.util.Stack<>();
     private FavoritesManager favoritesManager;
 
     private int currentProgress = 0;
     private static final int PROGRESS_MAX = 100;
     private static final int PROGRESS_ANIM_DELAY = 16;
-    private static final long FAV_SYNC_INTERVAL_MS = 30 * 1000;
+    private static final long FAV_SYNC_INTERVAL_MS = 5 * 1000;
     private Runnable favoritesSyncRunnable;
 
     private Runnable loginWatchdogRunnable;
     private Runnable networkRetryRunnable;
     private FavoritesManager.SyncListener originalFavListener;
+
+    // ==================== Token/CSRF 持久化 ====================
+    private void restoreAuthCache() {
+        android.content.SharedPreferences sp = getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE);
+        String tok = sp.getString(KEY_TOKEN, "");
+        String cs = sp.getString(KEY_CSRF, "");
+        if (!tok.isEmpty()) cachedAuthToken = tok;
+        if (!cs.isEmpty()) cachedCsrfToken = cs;
+    }
+    private void saveAuthCache() {
+        getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_TOKEN, cachedAuthToken != null ? cachedAuthToken : "")
+            .putString(KEY_CSRF, cachedCsrfToken != null ? cachedCsrfToken : "")
+            .apply();
+    }
+    private void clearAuthCache() {
+        getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE).edit().clear().apply();
+    }
 
     @SuppressLint({"SetJavaScriptEnabled", "MissingInflatedId"})
     @Override
@@ -88,6 +123,7 @@ public class MainActivity extends AppCompatActivity {
         initViews();
         setupTopBar();
         setupWebView();
+        setupBackgroundWebView();
         setupSwipeRefresh();
         setupErrorRetry();
 
@@ -97,25 +133,137 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onCodeFilled() { }
         });
 
-        showLoadingOverlay(true);
-        loadingStartTime = System.currentTimeMillis();
-        isAutoRedirect = true;
-        webView.loadUrl(HOME_URL);
+        startSilentStartupCheck();
+
+        // 从持久化存储恢复 token/csrf（避免重启后 WebView localStorage 丢失）
+        restoreAuthCache();
 
         webView.addJavascriptInterface(new Object() {
             @android.webkit.JavascriptInterface
             public void closeFavorites() {
                 mainHandler.post(() -> {
+                    if (!pageHistory.isEmpty()) {
+                        String prev = pageHistory.pop();
+                        if (prev != null && !prev.startsWith("file:///android_asset/favorites_viewer")
+                                && !prev.startsWith("file:///android_asset/practice_frontend")) {
+                            webView.loadUrl(prev);
+                            return;
+                        }
+                    }
+                    loadAppFrontend();
+                });
+            }
+
+            @android.webkit.JavascriptInterface
+            public void openFavorites() {
+                mainHandler.post(MainActivity.this::openFavoritesViewer);
+            }
+
+            @android.webkit.JavascriptInterface
+            public void syncFavorites() {
+                mainHandler.post(() -> {
+                    if (!WebViewConfig.isNetworkAvailable() || !isLoggedIn || favoritesManager == null || getAuthWebView() == null) {
+                        return;
+                    }
+                    favoritesManager.setListener(new FavoritesManager.SyncListener() {
+                        @Override public void onProgress(String message) { }
+                        @Override public void onComplete(int count) { favoritesManager.setListener(originalFavListener); if (isFavoritesPageVisible()) { String json = favoritesManager.getData().toString(); String b64 = android.util.Base64.encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP); webView.evaluateJavascript("javascript:(function(){if(window.updateFavoritesData){window.updateFavoritesData('" + b64 + "');}})()", null); } }
+                        @Override public void onError(String error) { favoritesManager.setListener(originalFavListener); }
+                    });
+                    favoritesManager.startSync(getAuthWebView());
+                });
+            }
+
+            @android.webkit.JavascriptInterface
+            public void openPractice(String categoryId) {
+                mainHandler.post(() -> loadPracticeFrontend(categoryId, null));
+            }
+
+            @android.webkit.JavascriptInterface
+            public void openPracticeWithQuestion(String categoryId, String questionId) {
+                mainHandler.post(() -> loadPracticeFrontend(categoryId, questionId));
+            }
+
+            @android.webkit.JavascriptInterface
+            public void requestAppData() {
+                mainHandler.post(MainActivity.this::fetchAppFrontendData);
+            }
+
+            @android.webkit.JavascriptInterface
+            public void requestPracticeData(String categoryId) {
+                mainHandler.post(() -> fetchPracticeData(categoryId));
+            }
+
+            @android.webkit.JavascriptInterface
+            public void practiceAction(String data) {
+                mainHandler.post(() -> performPracticeAction(data, null));
+            }
+
+            @android.webkit.JavascriptInterface
+            public void recordPractice(String categoryId) {
+                mainHandler.post(() -> {
+                    if (categoryId == null || categoryId.trim().isEmpty() || getAuthWebView() == null || !WebViewConfig.isNetworkAvailable()) return;
+                    warmAuthWebView(() -> {
+                        String safeId = escapeJsString(categoryId.trim());
+                        String js = "javascript:fetch('/api/user/practice_events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'practice',category_id:" + safeId + "})}).catch(function(){});";
+                        getAuthWebView().evaluateJavascript(js, null);
+                    });
+                });
+            }
+
+            @android.webkit.JavascriptInterface
+            public void requestHistoryData() {
+                mainHandler.post(MainActivity.this::fetchHistoryData);
+            }
+
+            @android.webkit.JavascriptInterface
+            public void submitLoginCode(String code) {
+                mainHandler.post(() -> submitLoginCodeFromLocalPage(code));
+            }
+
+            @android.webkit.JavascriptInterface
+            public void fillClipboardCode() {
+                mainHandler.post(MainActivity.this::sendClipboardCodeToLoginPage);
+            }
+
+            @android.webkit.JavascriptInterface
+            public void openWeChatFromLogin() {
+                mainHandler.post(MainActivity.this::openWeChat);
+            }
+
+            @android.webkit.JavascriptInterface
+            public void goHome() {
+                mainHandler.post(MainActivity.this::loadAppFrontend);
+            }
+
+            @android.webkit.JavascriptInterface
+public void goBackFromPractice() {
+mainHandler.post(() -> {
+if (!pageHistory.isEmpty()) {
+String prev = pageHistory.pop();
+if (prev != null && !prev.startsWith("file:///android_asset/practice_frontend")
+&& !prev.startsWith("file:///android_asset/favorites_viewer")) {
+webView.loadUrl(prev);
+return;
+}
+}
+loadAppFrontend();
+});
+}
+
+            @android.webkit.JavascriptInterface
+            public void logout() {
+                mainHandler.post(MainActivity.this::logout);
+            }
+
+            @android.webkit.JavascriptInterface
+            public void openWebHome() {
+                // 保留桥接方法但不被 UI 调用，避免编译错误
+                mainHandler.post(() -> {
                     isAutoRedirect = true;
                     loadingStartTime = System.currentTimeMillis();
                     showLoadingOverlay(true);
-                    mainHandler.postDelayed(() -> {
-                        if (lastPageUrl != null && !lastPageUrl.isEmpty() && !lastPageUrl.startsWith("file://")) {
-                            webView.loadUrl(lastPageUrl);
-                        } else {
-                            webView.loadUrl(HOME_URL);
-                        }
-                    }, 400);
+                    webView.loadUrl(HOME_PAGE_URL);
                 });
             }
         }, "Android");
@@ -155,6 +303,8 @@ public class MainActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBar);
         swipeRefresh = findViewById(R.id.swipeRefresh);
         webView = findViewById(R.id.webView);
+        webView.setBackgroundColor(0xFF1A1A2E); // 与 splash_bg 一致，避免启动时白屏过渡
+        backgroundWebView = findViewById(R.id.backgroundWebView);
         loadingOverlay = findViewById(R.id.loadingOverlay);
         errorOverlay = findViewById(R.id.errorOverlay);
         errorMsg = findViewById(R.id.errorMsg);
@@ -165,26 +315,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupTopBar() {
-        if (btnFavorites == null) return;
-        btnFavorites.setOnTouchListener((v, event) -> {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN: v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(100).start(); break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL: v.animate().scaleX(1f).scaleY(1f).setDuration(120).start(); break;
-            }
-            return false;
-        });
-        btnFavorites.setOnClickListener(v -> { v.setAlpha(0.5f); v.animate().alpha(1f).setDuration(200).start(); openFavoritesViewer(); });
+        if (btnFavorites != null) btnFavorites.setVisibility(View.GONE);
     }
 
     private void updateTopBarVisibility() {
-        if (btnFavorites != null) btnFavorites.setVisibility(View.VISIBLE);
+        if (btnFavorites != null) btnFavorites.setVisibility(View.GONE);
     }
 
     // ==================== WebView ====================
     @SuppressLint("SetJavaScriptEnabled")
     private void setupWebView() {
         WebViewConfig.configure(webView);
+        // 允许 file:// 资产页面直接 fetch https:// API（避免跨域限制）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            webView.getSettings().setAllowUniversalAccessFromFileURLs(true);
+            webView.getSettings().setAllowFileAccessFromFileURLs(true);
+        }
         webView.setLayerType(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP ? View.LAYER_TYPE_HARDWARE : View.LAYER_TYPE_SOFTWARE, null);
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public void onProgressChanged(WebView view, int newProgress) { super.onProgressChanged(view, newProgress); animateProgressBar(newProgress); }
@@ -215,31 +361,644 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
+    private void setupBackgroundWebView() {
+        if (backgroundWebView == null) return;
+        WebViewConfig.configure(backgroundWebView);
+        backgroundWebView.setWebChromeClient(new WebChromeClient());
+        backgroundWebView.setWebViewClient(new android.webkit.WebViewClient());
+        backgroundWebView.loadUrl(HOME_URL);
+    }
+
+    private void startSilentStartupCheck() {
+        showLoadingOverlay(true);
+        loadingStartTime = System.currentTimeMillis();
+        isAutoRedirect = true;
+        isFirstLoad = false;
+        WebView authView = getAuthWebView();
+        if (authView != null) authView.loadUrl(HOME_URL);
+        mainHandler.postDelayed(this::handleHomePageLoaded, 900);
+    }
+
     // ==================== 首页 → 维护检测 → 自动路由 ====================
     private void handleHomePageLoaded() {
         String mJs = "javascript:(function(){var b=document.body?document.body.innerText:'';if(b.indexOf('\u7ef4\u62a4')>=0||b.indexOf('\u5347\u7ea7')>=0)return'maintenance';return'ok';})()";
-        webView.evaluateJavascript(mJs, mResult -> {
+        WebView authView = getAuthWebView();
+        if (authView == null) return;
+        authView.evaluateJavascript(mJs, mResult -> {
             String mr = mResult != null ? mResult.replaceAll("\"", "") : "ok";
-            if ("maintenance".equals(mr)) { showLoadingOverlay(false); toast("\u26a0\ufe0f 网站正在维护中"); return; }
+            if ("maintenance".equals(mr)) { loadMaintenanceFrontend(); return; }
             checkLoginAndRoute();
         });
     }
 
     private void checkLoginAndRoute() {
-        if (!WebViewConfig.isNetworkAvailable()) { showLoadingOverlay(false); toast("\u26a0\ufe0f 网络连接异常"); startNetworkRetry(); return; }
-        mainHandler.postDelayed(() -> {
-            String js = "javascript:(function(){var token=localStorage.getItem('daguan_token');return token?'logged_in':'not_logged_in';})()";
-            webView.evaluateJavascript(js, result -> {
-                String r = result != null ? result.replaceAll("\"", "") : "";
-                if ("logged_in".equals(r)) {
-                    isLoggedIn = true; loginGuideShown = false; showLoadingOverlay(false); isFirstLoad = false; isAutoRedirect = false;
-                    webView.loadUrl(HOME_PAGE_URL);
-                    mainHandler.postDelayed(() -> { if (WebViewConfig.isNetworkAvailable()) { startLoginWatchdog(); startFavoritesPeriodicSync(); } }, 1000);
-                } else {
+        if (!WebViewConfig.isNetworkAvailable()) {
+            showLoadingOverlay(false);
+            toast("\u26a0\ufe0f 网络连接异常");
+            // 断网时仍然加载本地前端，保证用户能看到 UI（收藏、底部功能栏等）
+            loadAppFrontend();
+            startNetworkRetry();
+            return;
+        }
+        warmAuthWebView(() -> {
+            String js = "javascript:(function(){var token=localStorage.getItem('daguan_token')||'';var csrf=localStorage.getItem('csrf_token')||'';return JSON.stringify({logged_in:!!token,token:token,csrf:csrf});})()";
+            getAuthWebView().evaluateJavascript(js, result -> {
+                try {
+                    org.json.JSONObject info = new org.json.JSONObject(result != null ? result : "{}");
+                    boolean loggedIn = info.optBoolean("logged_in", false);
+                    if (loggedIn) {
+                        // 缓存 token 和 csrf，避免后续 @JavascriptInterface 中死锁
+String tok = info.optString("token", "");
+String cs = info.optString("csrf", "");
+if (!tok.isEmpty()) cachedAuthToken = tok;
+if (!cs.isEmpty()) cachedCsrfToken = cs;
+saveAuthCache();
+// 每次启动都主动从 WebView 获取最新 csrf（可能被刷新）
+if (!tok.isEmpty()) {
+  mainHandler.postDelayed(() -> fetchAndCacheCsrf(), 500);
+}
+                        isLoggedIn = true; loginGuideShown = false; showLoadingOverlay(false); isFirstLoad = false; isAutoRedirect = false;
+                        loadAppFrontend();
+                        mainHandler.postDelayed(() -> { if (WebViewConfig.isNetworkAvailable()) { startLoginWatchdog(); startFavoritesPeriodicSync(); } }, 1000);
+                    } else {
+                        // WebView localStorage 无 token，但 SharedPreferences 可能有缓存
+                        if (!cachedAuthToken.isEmpty()) {
+                            // 使用缓存的 token，尝试加载前端（token 可能仍有效）
+                            isLoggedIn = true; loginGuideShown = false; showLoadingOverlay(false);
+                            loadAppFrontend();
+                            // 异步刷新 WebView 中的 token（后台加载页面写入 localStorage）
+                            warmAuthWebView(() -> {
+                                WebView av = getAuthWebView();
+                                if (av != null) {
+                                    String j = "javascript:(function(){localStorage.setItem('daguan_token','"+escapeJsString(cachedAuthToken)+"');})()";
+                                    av.evaluateJavascript(j, null);
+                                    fetchAndCacheCsrf();
+                                }
+                            });
+                        } else {
+                            startSilentLoginCheck();
+                        }
+                    }
+                } catch (Exception e) {
                     startSilentLoginCheck();
                 }
             });
-        }, 300);
+        });
+    }
+
+    private WebView getAuthWebView() {
+        return backgroundWebView != null ? backgroundWebView : webView;
+    }
+
+    private void warmAuthWebView(Runnable afterWarm) {
+        WebView authView = getAuthWebView();
+        if (authView == null) return;
+        String url = authView.getUrl();
+        if (url == null || !url.startsWith("https://cxyonly.fans")) {
+            authView.loadUrl(HOME_PAGE_URL);
+            mainHandler.postDelayed(() -> warmAuthWebView(afterWarm), 900);
+        } else {
+            authView.evaluateJavascript("javascript:(function(){fetch('/api/site/math-home-config').catch(function(){});return localStorage.getItem('daguan_token')?'warm_token':'warm';})()", r -> mainHandler.postDelayed(afterWarm, 300));
+        }
+    }
+
+    private void loadAppFrontend() {
+        if (webView == null) return;
+        isAutoRedirect = false;
+        showLoadingOverlay(false);
+        pageHistory.clear();
+        int favoriteCount = favoritesManager != null ? favoritesManager.getCount() : 0;
+        String json = "{\"favoritesCount\":" + favoriteCount + "}";
+        String b64 = android.util.Base64.encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+        webView.loadUrl("file:///android_asset/app_frontend.html#data=" + b64);
+    }
+
+    private void loadLoginFrontend() {
+        if (webView == null) return;
+        isAutoRedirect = false;
+        showLoadingOverlay(false);
+        webView.loadUrl("file:///android_asset/login_frontend.html");
+        mainHandler.postDelayed(this::sendClipboardCodeToLoginPage, 700);
+    }
+
+    private void loadMaintenanceFrontend() {
+        if (webView == null) return;
+        isAutoRedirect = false;
+        showLoadingOverlay(false);
+        stopLoginWatchdog();
+        stopFavoritesPeriodicSync();
+        int favCount = favoritesManager != null ? favoritesManager.getCount() : 0;
+        String json = "{\"favoritesCount\":" + favCount + "}";
+        String b64 = android.util.Base64.encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+        webView.loadUrl("file:///android_asset/maintenance_frontend.html#data=" + b64);
+    }
+
+    private void fetchAppFrontendData() {
+        if (webView == null || getAuthWebView() == null || !WebViewConfig.isNetworkAvailable()) {
+            sendAppFrontendData("{\"success\":false,\"error\":\"offline\"}");
+            return;
+        }
+        warmAuthWebView(() -> {
+            // 同步 XMLHttpRequest + 从 localStorage 取 token/csrf + 加 Authorization 头
+            String js = "javascript:(function(){"
+                + "var token=localStorage.getItem('daguan_token')||'';"
+                + "var csrf=localStorage.getItem('csrf_token')||'';"
+                + "var r={success:true,access_token:token,csrf_token:csrf};"
+                + "var h=token?{'Authorization':'Bearer '+token}:{};"
+                + "if(csrf)h['X-CSRF-Token']=csrf;"
+                + "try{var x=new XMLHttpRequest();"
+                + "x.open('GET','/api/site/math-home-config',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.home=JSON.parse(x.responseText);"
+                + "x.open('GET','/api/categories?include_stats=true',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.categories=JSON.parse(x.responseText);"
+                + "x.open('GET','/api/questions/user/last_study',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.last_study=JSON.parse(x.responseText);"
+                + "x.open('GET','/api/user/daily_stats',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.daily_stats=JSON.parse(x.responseText);"
+                + "x.open('GET','/api/user/total_stats',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.total_stats=JSON.parse(x.responseText);"
+                + "}catch(e){r.success=false;r.error=e.message;}"
+                + "return JSON.stringify(r);"
+                + "})()";
+            getAuthWebView().evaluateJavascript(js, result -> {
+                try {
+                    Object parsed = new org.json.JSONTokener(result).nextValue();
+                    String jsonStr = parsed instanceof String ? (String) parsed : String.valueOf(parsed);
+                    // 从返回数据中提取 & 缓存 token 和 csrf_token（每次 requestAppData 都刷新）
+                    try {
+                        org.json.JSONObject obj = new org.json.JSONObject(jsonStr);
+                        // 更新缓存的 token
+                        if (obj.has("access_token")) {
+                            String t = obj.optString("access_token", "");
+                            if (!t.isEmpty()) { cachedAuthToken = t; }
+                        }
+                        // 更新缓存的 csrf_token
+                        if (obj.has("csrf_token")) {
+                            String c = obj.optString("csrf_token", "");
+                            if (!c.isEmpty()) { cachedCsrfToken = c; }
+                        }
+                        if (obj.has("access_token") || obj.has("csrf_token")) {
+                            saveAuthCache();
+                        }
+                        // 注入收藏数
+                        obj.put("favoritesCount", favoritesManager != null ? favoritesManager.getCount() : 0);
+                        jsonStr = obj.toString();
+                    } catch (Exception ignored) {}
+                    sendAppFrontendData(jsonStr);
+                } catch (Exception e) {
+                    sendAppFrontendData("{\"success\":false,\"error\":\"parse\"}");
+                }
+            });
+        });
+    }
+
+    private void sendAppFrontendData(String json) {
+        if (webView == null) return;
+        String b64 = android.util.Base64.encodeToString((json == null ? "{}" : json).getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+        webView.evaluateJavascript("javascript:(function(){if(window.onAppData){window.onAppData('" + b64 + "');}})()", null);
+    }
+
+    private void submitLoginCodeFromLocalPage(String code) {
+        if (code == null || code.trim().isEmpty()) {
+            notifyLoginPage("请输入登录码", false);
+            return;
+        }
+        if (!WebViewConfig.isNetworkAvailable()) {
+            notifyLoginPage("网络连接异常", false);
+            return;
+        }
+        final String finalCode = code.trim();
+        notifyLoginPage("正在登录…", true);
+        // 用新线程执行 HTTP 请求，不阻塞 UI
+        new Thread(() -> {
+            try {
+                URL url = new URL("https://cxyonly.fans/api/auth/login");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(15000);
+                String body = "{\"verification_code\":\"" + escapeJsonString(finalCode) + "\",\"login_mode\":\"new\"}";
+                OutputStreamWriter writer = new OutputStreamWriter(conn.getOutputStream(), "UTF-8");
+                writer.write(body);
+                writer.flush();
+                writer.close();
+                int httpCode = conn.getResponseCode();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        httpCode >= 400 ? conn.getErrorStream() : conn.getInputStream(), "UTF-8"));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) response.append(line);
+                reader.close();
+                conn.disconnect();
+                String json = response.toString();
+                // 解析 JSON 响应
+                org.json.JSONObject root = new org.json.JSONObject(json);
+                int codeVal = root.optInt("code", -1);
+                if (codeVal == 0) {
+                    org.json.JSONObject data = root.optJSONObject("data");
+                    if (data == null) data = root;
+                    String token = data.optString("access_token", "");
+                    if (token.isEmpty()) token = data.optString("token", "");
+                    if (!token.isEmpty()) {
+                        final String finalToken = token;
+                        final String finalUser = data.has("user") ? data.get("user").toString() : "";
+                        final String finalCsrf = data.optString("csrf_token", "");
+                        // 回到主线程：先预热后台 WebView，写入 token，再走统一检测路由
+                        mainHandler.post(() -> finishLoginWithToken(finalToken, finalUser, finalCsrf));
+                        return;
+                    }
+                }
+                // 登录失败
+                final String errMsg = root.optString("message", root.optString("error", "登录失败（" + httpCode + "）"));
+                mainHandler.post(() -> notifyLoginPage(errMsg, false));
+            } catch (Exception e) {
+                final String err = e.getMessage() != null ? e.getMessage() : "网络请求异常";
+                mainHandler.post(() -> notifyLoginPage(err, false));
+            }
+        }).start();
+    }
+
+    private void finishLoginWithToken(String token, String user, String csrf) {
+// 0. 缓存 token 和 csrf 供后续直连 HTTP 使用
+cachedAuthToken = token != null ? token : "";
+cachedCsrfToken = csrf != null ? csrf : "";
+saveAuthCache();
+        // 1. 预热：确保后台 WebView 已在 cxyonly.fans 域
+        warmAuthWebView(() -> {
+            // 2. 现在域已正确，写入 token 到 localStorage
+            WebView authView = getAuthWebView();
+            if (authView == null) {
+                notifyLoginPage("登录环境未就绪", false);
+                return;
+            }
+            StringBuilder js = new StringBuilder();
+            js.append("javascript:(function(){");
+            js.append("localStorage.setItem('daguan_token','").append(escapeJsString(token)).append("');");
+            if (user != null && !user.isEmpty()) {
+                js.append("try{localStorage.setItem('daguan_user',").append(user).append(");}catch(e){}");
+            }
+            if (csrf != null && !csrf.isEmpty()) {
+                js.append("localStorage.setItem('csrf_token','").append(escapeJsString(csrf)).append("');");
+            }
+            js.append("return 'ok';})()");
+            authView.evaluateJavascript(js.toString(), null);
+            // 3. 登录后立即获取 csrf token 并缓存
+            mainHandler.postDelayed(() -> fetchAndCacheCsrf(), 600);
+            // 4. 写入后稍等片刻，调用 checkLoginAndRoute 检测 token 并跳转
+            mainHandler.postDelayed(this::checkLoginAndRoute, 400);
+        });
+    }
+
+    private void notifyLoginPage(String message, boolean success) {
+        if (webView == null) return;
+        String js = "javascript:(function(){if(window.onNativeLoginResult){window.onNativeLoginResult('"
+                + escapeJsString(message == null ? "" : message) + "'," + success + ");}})()";
+        webView.evaluateJavascript(js, null);
+    }
+
+    private void sendClipboardCodeToLoginPage() {
+        if (webView == null) return;
+        String code = readLoginCodeFromClipboard();
+        if (code == null || code.isEmpty()) {
+            notifyLoginPage("剪贴板未检测到登录码", false);
+            return;
+        }
+        String js = "javascript:(function(){if(window.fillLoginCode){window.fillLoginCode('" + escapeJsString(code) + "');}})()";
+        webView.evaluateJavascript(js, null);
+    }
+
+    private String readLoginCodeFromClipboard() {
+        try {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null || !clipboard.hasPrimaryClip()) return null;
+            ClipData clip = clipboard.getPrimaryClip();
+            if (clip == null || clip.getItemCount() == 0 || clip.getItemAt(0).getText() == null) return null;
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("登录码[：:]\\s*([a-zA-Z0-9]+)").matcher(clip.getItemAt(0).getText().toString());
+            return matcher.find() ? matcher.group(1) : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void loadPracticeFrontend(String categoryId, String questionId) {
+        if (webView == null || categoryId == null || categoryId.trim().isEmpty()) return;
+        String cur = webView.getUrl();
+        if (cur != null && !cur.startsWith("file:///android_asset/practice_frontend")) {
+            pageHistory.push(cur);
+        }
+        isAutoRedirect = false;
+        showLoadingOverlay(false);
+        // 先从 auth WebView 获取 access_token，再加载练习页
+        final WebView authView = getAuthWebView();
+        if (authView != null) {
+            String js = "javascript:(function(){return localStorage.getItem('daguan_token')||'';})()";
+            authView.evaluateJavascript(js, tokenResult -> {
+                String token = tokenResult != null ? tokenResult.replaceAll("\"", "") : "";
+                StringBuilder json = new StringBuilder();
+                json.append("{\"categoryId\":\"").append(escapeJsonString(categoryId.trim())).append("\"");
+                json.append(",\"access_token\":\"").append(escapeJsonString(token)).append("\"");
+                if (questionId != null && !questionId.trim().isEmpty()) {
+                    json.append(",\"questionId\":\"").append(escapeJsonString(questionId.trim())).append("\"");
+                }
+                json.append("}");
+                String b64 = android.util.Base64.encodeToString(json.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+                webView.loadUrl("file:///android_asset/practice_frontend.html#data=" + b64);
+            });
+        } else {
+            StringBuilder json = new StringBuilder();
+            json.append("{\"categoryId\":\"").append(escapeJsonString(categoryId.trim())).append("\"");
+            if (questionId != null && !questionId.trim().isEmpty()) {
+                json.append(",\"questionId\":\"").append(escapeJsonString(questionId.trim())).append("\"");
+            }
+            json.append("}");
+            String b64 = android.util.Base64.encodeToString(json.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+            webView.loadUrl("file:///android_asset/practice_frontend.html#data=" + b64);
+        }
+    }
+
+    private void fetchPracticeData(String categoryId) {
+        if (categoryId == null || categoryId.trim().isEmpty() || getAuthWebView() == null) return;
+        if (!WebViewConfig.isNetworkAvailable()) {
+            sendPracticeData("{\"success\":false,\"error\":\"网络连接异常\"}");
+            return;
+        }
+        String safeId = escapeJsString(categoryId.trim());
+        final WebView authView = getAuthWebView();
+        Runnable doFetch = () -> {
+            // 同步 XMLHttpRequest + Authorization header
+            String js = "javascript:(function(){"
+                + "var token=localStorage.getItem('daguan_token')||'';"
+                + "var h=token?{'Authorization':'Bearer '+token}:{};"
+                + "try{var x=new XMLHttpRequest();"
+                + "x.open('GET','/api/questions?category_id=" + safeId + "&include_children=true&page=1&per_page=20&sort=mobile',false);"
+                + "Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});"
+                + "x.send();return x.responseText;"
+                + "}catch(e){return JSON.stringify({success:false,error:e.message});}"
+                + "})()";
+            authView.evaluateJavascript(js, result -> {
+                try {
+                    Object parsed = new org.json.JSONTokener(result).nextValue();
+                    sendPracticeData(parsed instanceof String ? (String) parsed : String.valueOf(parsed));
+                } catch (Exception e) {
+                    sendPracticeData("{\"success\":false,\"error\":\"题目数据解析失败\"}");
+                }
+            });
+        };
+        String url = authView.getUrl();
+        if (url != null && url.startsWith("https://cxyonly.fans")) {
+            doFetch.run();
+        } else {
+            authView.loadUrl(HOME_PAGE_URL);
+            mainHandler.postDelayed(doFetch, 900);
+        }
+    }
+
+    private void sendPracticeData(String json) {
+        if (webView == null) return;
+        String b64 = android.util.Base64.encodeToString((json == null ? "{}" : json).getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+        webView.evaluateJavascript("javascript:(function(){if(window.onPracticeData){window.onPracticeData('" + b64 + "');}})()", null);
+    }
+
+    // ==================== 交互按钮状态操作 ====================
+    private void notifyActionComplete() {
+        // Java → JS 回调：通知前端刷新按钮状态
+        if (webView != null) {
+            webView.evaluateJavascript("javascript:(function(){try{if(window.onPracticeActionComplete)window.onPracticeActionComplete();}catch(e){}})()", null);
+        }
+    }
+
+    private void performPracticeAction(String action, String questionId) {
+        if (action == null || action.trim().isEmpty() || !WebViewConfig.isNetworkAvailable()) {
+            notifyActionComplete();
+            return;
+        }
+        String safe = action.trim();
+        String token = cachedAuthToken;
+        String csrf = cachedCsrfToken;
+        // ⚠️ 不要在 @JavascriptInterface 中调用 getTokenFromAuthWebView（会导致死锁）
+        // API 强制要求 X-CSRF-Token 头（无则 403），所以必须 csrf 非空才能直连
+        if (token == null || token.isEmpty() || csrf == null || csrf.isEmpty()) {
+            // csrf 为空时走 WebView 回退（需要确保 background WebView 有新鲜页面）
+            refreshAuthWebViewThenExecute(safe);
+            return;
+        }
+        final String finalToken = token;
+        final String finalCsrf = csrf;
+        final String safeAction = safe;
+
+        // 使用直连 HTTP（更快，不依赖 WebView 状态）
+        new Thread(() -> {
+            try {
+                String[] parts = safeAction.split("\\|");
+                if (parts.length < 2) return;
+                String act = parts[0];
+                String id = parts[1];
+
+                java.net.URL url;
+                String jsonBody;
+                String method;
+                if ("note".equals(act) && parts.length >= 3) {
+                    String txt = java.net.URLDecoder.decode(parts[2], "UTF-8");
+                    url = new java.net.URL("https://cxyonly.fans/api/v1/user/questions/" + id + "/note");
+                    jsonBody = "{\"note\":" + org.json.JSONObject.quote(txt) + "}";
+                    method = "PUT";
+                } else {
+                    url = new java.net.URL("https://cxyonly.fans/api/questions/" + id + "/state");
+                    if ("fav_true".equals(act)) jsonBody = "{\"is_favorite\":true}";
+                    else if ("fav_false".equals(act)) jsonBody = "{\"is_favorite\":false}";
+                    else if ("mastered".equals(act)) jsonBody = "{\"mastery\":\"mastered\"}";
+                    else if ("needs_practice".equals(act)) jsonBody = "{\"mastery\":\"needs_practice\"}";
+                    else if ("not_known".equals(act)) jsonBody = "{\"mastery\":\"not_known\"}";
+                    else if ("not_started".equals(act)) jsonBody = "{\"mastery\":\"not_started\"}";
+                    else return;
+                    method = "PATCH";
+                }
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod(method);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + finalToken);
+                conn.setRequestProperty("X-CSRF-Token", finalCsrf); // 强制带 csrf
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.getOutputStream().write(jsonBody.getBytes("UTF-8"));
+                int code = conn.getResponseCode();
+                conn.disconnect();
+                if (code >= 200 && code < 300) {
+                    mainHandler.post(MainActivity.this::notifyActionComplete);
+                    return;
+                }
+                // 非 2xx（可能 403/401）→ 清空缓存的 csrf 并回退到 WebView（带页面刷新）
+                cachedCsrfToken = "";
+                saveAuthCache();
+            } catch (Exception ignored) {
+                cachedCsrfToken = "";
+                saveAuthCache();
+            }
+            // 直连失败 → 刷新 background WebView 页面，确保有新鲜 csrf/token 再执行
+            mainHandler.post(() -> refreshAuthWebViewThenExecute(safeAction));
+        }).start();
+    }
+
+    // 刷新 background WebView 页面，等 Vue 初始化后执行交互动作
+    private void refreshAuthWebViewThenExecute(String safeAction) {
+        WebView av = getAuthWebView();
+        if (av == null) { notifyActionComplete(); return; }
+        // 强制加载最新页面，确保 localStorage 有新鲜 csrf_token
+        av.loadUrl(HOME_PAGE_URL);
+        // 等页面加载 + Vue 初始化（含 csrf_token 写入 localStorage）
+        mainHandler.postDelayed(() -> {
+            executeInAuthWebView(safeAction);
+            fetchAndCacheCsrf();
+            notifyActionComplete();
+        }, 1500);
+    }
+
+    // 异步从 WebView 获取 csrf_token 并缓存到 cachedCsrfToken
+    private void fetchAndCacheCsrf() {
+        WebView av = getAuthWebView();
+        if (av == null) return;
+        String url = av.getUrl();
+        if (url == null || !url.startsWith("https://cxyonly.fans")) {
+            av.loadUrl(HOME_PAGE_URL);
+            mainHandler.postDelayed(this::fetchAndCacheCsrf, 900);
+            return;
+        }
+        String js = "javascript:(function(){"
+            + "var csrf=localStorage.getItem('csrf_token')||'';"
+            + "if(!csrf){var c=document.cookie.split(';');for(var i=0;i<c.length;i++){var t=c[i].trim();if(t.indexOf('csrf_token=')===0){csrf=t.substring(11);break;}}}"
+            + "return csrf;})()";
+        av.evaluateJavascript(js, r -> {
+            if (r != null && !"null".equals(r)) {
+                String cs = r.replaceAll("^\"|\"$", "");
+                if (!cs.isEmpty()) { cachedCsrfToken = cs; saveAuthCache(); }
+            }
+        });
+    }
+
+    // 在后台 WebView 中执行 action JS（回退方案）
+    private void executeInAuthWebView(String safeAction) {
+        WebView authView = getAuthWebView();
+        if (authView == null) return;
+        String safe = escapeJsString(safeAction);
+        String js = "javascript:(function(){"
+            + "var token=localStorage.getItem('daguan_token')||'';"
+            + "var csrf=localStorage.getItem('csrf_token')||'';"
+            + "if(!csrf){var c=document.cookie.split(';');for(var i=0;i<c.length;i++){var t=c[i].trim();if(t.indexOf('csrf_token=')===0){csrf=t.substring(11);break;}}}"
+            + "var h=token?{'Authorization':'Bearer '+token}:{};"
+            + "if(csrf)h['X-CSRF-Token']=csrf;"
+            + "var act='',id='';var p='" + safe + "'.split('|');"
+            + "act=p[0];id=p[1];"
+            + "if(act==='note'&&p.length>=3){"
+            +   "var txt=decodeURIComponent(p.slice(2).join('|'));"
+            +   "var x=new XMLHttpRequest();"
+            +   "x.open('PUT','/api/v1/user/questions/'+id+'/note',false);"
+            +   "x.setRequestHeader('Content-Type','application/json');"
+            +   "Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});"
+            +   "x.send(JSON.stringify({note:txt}));"
+            +   "return x.status;"
+            + "}"
+            + "var body={};"
+            + "if(act==='fav_true'){body={is_favorite:true};}"
+            + "else if(act==='fav_false'){body={is_favorite:false};}"
+            + "else if(act==='mastered'){body={mastery:'mastered'};}"
+            + "else if(act==='needs_practice'){body={mastery:'needs_practice'};}"
+            + "else if(act==='not_known'){body={mastery:'not_known'};}"
+            + "else if(act==='not_started'){body={mastery:'not_started'};}"
+            + "else{return;}"
+            + "var x=new XMLHttpRequest();x.open('PATCH','/api/questions/'+id+'/state',false);"
+            + "x.setRequestHeader('Content-Type','application/json');"
+            + "Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});"
+            + "x.send(JSON.stringify(body));"
+            + "return x.status;"
+            + "})()";
+        // 检查 WebView 域名，确保能执行 JS
+        String url = authView.getUrl();
+        if (url != null && url.startsWith("https://cxyonly.fans")) {
+            authView.evaluateJavascript(js, null);
+        } else {
+            authView.loadUrl("https://cxyonly.fans/m/home");
+            mainHandler.postDelayed(() -> authView.evaluateJavascript(js, null), 1200);
+        }
+    }
+
+    private String getTokenFromAuthWebView() {
+        WebView authView = getAuthWebView();
+        if (authView == null) return "";
+        final String[] result = {""};
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        mainHandler.post(() -> {
+            authView.evaluateJavascript("javascript:(function(){return localStorage.getItem('daguan_token')||'';})()", r -> {
+                if (r != null && !"null".equals(r)) {
+                    result[0] = r.replaceAll("^\"|\"$", "");
+                }
+                latch.countDown();
+            });
+        });
+        try { latch.await(3000, java.util.concurrent.TimeUnit.MILLISECONDS); } catch (InterruptedException ignored) {}
+        return result[0];
+    }
+
+    private String getCsrfFromAuthWebView() {
+  // ⚠️ 同步版本已弃用（会死锁），使用 asyncCsrfFetch 替代
+  return cachedCsrfToken != null ? cachedCsrfToken : "";
+}
+// 异步从 WebView 获取 csrf_token（localStorage + cookie 双重检查）
+private void asyncCsrfFetch() {
+  WebView authView = getAuthWebView();
+  if (authView == null) return;
+  mainHandler.post(() -> {
+    String js = "javascript:(function(){"
+      + "var csrf=localStorage.getItem('csrf_token')||'';"
+      + "if(!csrf){var c=document.cookie.split(';');for(var i=0;i<c.length;i++){var t=c[i].trim();if(t.indexOf('csrf_token=')===0){csrf=t.substring(11);break;}}}"
+      + "return csrf;})()";
+    authView.evaluateJavascript(js, r -> {
+      if (r != null && !"null".equals(r)) {
+        String cs = r.replaceAll("^\"|\"$", "");
+        if (!cs.isEmpty()) cachedCsrfToken = cs;
+      }
+    });
+  });
+}
+
+    private void fetchHistoryData() {
+        if (webView == null || getAuthWebView() == null || !WebViewConfig.isNetworkAvailable()) {
+            sendHistoryData("{\"success\":false,\"error\":\"offline\"}");
+            return;
+        }
+        warmAuthWebView(() -> {
+            String js = "javascript:(function(){"
+                + "var token=localStorage.getItem('daguan_token')||'';"
+                + "var r={success:true,access_token:token,events:[],last_study:{},daily_stats:{}};"
+                + "var h=token?{'Authorization':'Bearer '+token}:{};"
+                + "try{"
+                + "var x=new XMLHttpRequest();"
+                + "x.open('GET','/api/user/practice_events/recent?per_page=50',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.events=JSON.parse(x.responseText);"
+                + "x.open('GET','/api/questions/user/last_study',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.last_study=JSON.parse(x.responseText);"
+                + "x.open('GET','/api/user/daily_stats',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.daily_stats=JSON.parse(x.responseText);"
+                + "}catch(e){r.success=false;r.error=e.message;}"
+                + "return JSON.stringify(r);"
+                + "})()";
+            getAuthWebView().evaluateJavascript(js, result -> {
+                try {
+                    Object parsed = new org.json.JSONTokener(result).nextValue();
+                    sendHistoryData(parsed instanceof String ? (String) parsed : String.valueOf(parsed));
+                } catch (Exception e) {
+                    sendHistoryData("{\"success\":false,\"error\":\"parse\"}");
+                }
+            });
+        });
+    }
+
+    private void sendHistoryData(String json) {
+        if (webView == null) return;
+        String b64 = android.util.Base64.encodeToString((json == null ? "{}" : json).getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+        webView.evaluateJavascript("javascript:(function(){if(window.onHistoryData){window.onHistoryData('" + b64 + "');}})()", null);
+    }
+
+    private static String escapeJsString(String s) {
+        return s == null ? "" : s.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
+    }
+
+    private static String escapeJsonString(String s) {
+        return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
     }
 
     // ==================== 登录检测 ====================
@@ -247,24 +1006,63 @@ public class MainActivity extends AppCompatActivity {
         if (loginCheckInProgress || isLoggedIn) return;
         if (!WebViewConfig.isNetworkAvailable()) return;
         loginCheckInProgress = true;
-        String js = "javascript:(function(){var token=localStorage.getItem('daguan_token');return token?'logged_in':'not_logged_in';})()";
-        webView.evaluateJavascript(js, result -> {
-            loginCheckInProgress = false;
-            String r = result != null ? result.replaceAll("\"", "") : "";
-            if ("logged_in".equals(r)) {
-                isLoggedIn = true; loginGuideShown = false; showLoadingOverlay(false); isAutoRedirect = true; loadingStartTime = System.currentTimeMillis();
-                mainHandler.postDelayed(() -> webView.loadUrl(HOME_PAGE_URL), 1500);
-                mainHandler.postDelayed(() -> { startLoginWatchdog(); startFavoritesPeriodicSync(); }, 2000);
-            } else {
-                goToLoginFlow();
-            }
+        warmAuthWebView(() -> {
+            String js = "javascript:(function(){var token=localStorage.getItem('daguan_token');return token?'logged_in':'not_logged_in';})()";
+            getAuthWebView().evaluateJavascript(js, result -> {
+                loginCheckInProgress = false;
+                String r = result != null ? result.replaceAll("\"", "") : "";
+                if ("logged_in".equals(r)) {
+                    isLoggedIn = true; loginGuideShown = false; showLoadingOverlay(false); isAutoRedirect = true; loadingStartTime = System.currentTimeMillis();
+                    mainHandler.postDelayed(MainActivity.this::loadAppFrontend, 1500);
+                    mainHandler.postDelayed(() -> { startLoginWatchdog(); startFavoritesPeriodicSync(); }, 2000);
+                } else {
+                    goToLoginFlow();
+                }
+            });
         });
     }
 
     private void goToLoginFlow() {
-        isLoggedIn = false; showLoadingOverlay(false); isAutoRedirect = true; loadingStartTime = System.currentTimeMillis();
-        mainHandler.postDelayed(() -> webView.loadUrl(LOGIN_URL), 1500);
-        mainHandler.postDelayed(this::showLoginCodeGuide, 3000);
+        isLoggedIn = false;
+        loginGuideShown = false;
+        showLoadingOverlay(false);
+        isAutoRedirect = false;
+        mainHandler.postDelayed(this::loadLoginFrontend, 300);
+    }
+
+    private void logout() {
+isLoggedIn = false;
+loginGuideShown = false;
+loginCheckInProgress = false;
+cachedAuthToken = "";
+cachedCsrfToken = "";
+clearAuthCache();
+stopLoginWatchdog();
+        stopFavoritesPeriodicSync();
+        WebView authView = getAuthWebView();
+        if (authView != null) {
+            authView.evaluateJavascript("javascript:(function(){localStorage.removeItem('daguan_token');localStorage.removeItem('daguan_user');localStorage.removeItem('csrf_token');return 'ok';})()", null);
+        }
+        clearAuthCookies();
+        loadLoginFrontend();
+    }
+
+    private void clearAuthCookies() {
+        try {
+            CookieManager cm = CookieManager.getInstance();
+            cm.setCookie("https://cxyonly.fans", "daguan_token=; Max-Age=0; Path=/");
+            cm.setCookie("https://cxyonly.fans", "csrf_token=; Max-Age=0; Path=/");
+            cm.setCookie("https://cxyonly.fans", "session=; Max-Age=0; Path=/");
+            cm.setCookie("https://cxyonly.fans", "access_token=; Max-Age=0; Path=/");
+            cm.setCookie("https://cxyonly.fans", "refresh_token=; Max-Age=0; Path=/");
+            cm.setCookie("https://cxyonly.fans", "daguan_token=; Max-Age=0; Path=/; Domain=.cxyonly.fans");
+            cm.setCookie("https://cxyonly.fans", "csrf_token=; Max-Age=0; Path=/; Domain=.cxyonly.fans");
+            cm.setCookie("https://cxyonly.fans", "session=; Max-Age=0; Path=/; Domain=.cxyonly.fans");
+            cm.setCookie("https://cxyonly.fans", "access_token=; Max-Age=0; Path=/; Domain=.cxyonly.fans");
+            cm.setCookie("https://cxyonly.fans", "refresh_token=; Max-Age=0; Path=/; Domain=.cxyonly.fans");
+            cm.removeSessionCookies(null);
+            cm.flush();
+        } catch (Exception ignored) { }
     }
 
     // ==================== 网络恢复重试 ====================
@@ -272,8 +1070,7 @@ public class MainActivity extends AppCompatActivity {
         stopNetworkRetry();
         networkRetryRunnable = () -> {
             if (WebViewConfig.isNetworkAvailable()) {
-                webView.evaluateJavascript("javascript:(function(){fetch('/api/user/collections?page=1&per_page=1').then(function(){return'ok'}).catch(function(){return'error'})})()", null);
-                mainHandler.postDelayed(() -> checkLoginAndRoute(), 800);
+                warmAuthWebView(() -> mainHandler.postDelayed(this::checkLoginAndRoute, 800));
                 return;
             }
             mainHandler.postDelayed(networkRetryRunnable, 1500);
@@ -289,12 +1086,10 @@ public class MainActivity extends AppCompatActivity {
             int missCount = 0;
             @Override
             public void run() {
-                if (webView == null) return;
+                if (getAuthWebView() == null) return;
                 if (!WebViewConfig.isNetworkAvailable()) { mainHandler.postDelayed(this, 1500); return; }
-                String currentUrl = webView.getUrl();
-                if (currentUrl == null || (!currentUrl.startsWith("https://cxyonly.fans") && !currentUrl.startsWith("http://cxyonly.fans"))) { mainHandler.postDelayed(this, 1500); return; }
                 String js = "javascript:(function(){var token=localStorage.getItem('daguan_token');return token?'logged_in':'not_logged_in';})()";
-                webView.evaluateJavascript(js, result -> {
+                getAuthWebView().evaluateJavascript(js, result -> {
                     String r = result != null ? result.replaceAll("\"", "") : "";
                     if ("logged_in".equals(r)) { missCount = 0; }
                     else if (isLoggedIn) { missCount++; if (missCount >= 3) { missCount = 0; handleTokenLost(); return; } }
@@ -310,7 +1105,7 @@ public class MainActivity extends AppCompatActivity {
         if (!isLoggedIn) return;
         isLoggedIn = false; loginGuideShown = false; stopLoginWatchdog(); stopFavoritesPeriodicSync(); toast("\u26a0\ufe0f 登录已失效，请重新登录");
         isAutoRedirect = true; loadingStartTime = System.currentTimeMillis(); showLoadingOverlay(true);
-        webView.loadUrl(LOGIN_URL); mainHandler.postDelayed(this::showLoginCodeGuide, 1500);
+        loadLoginFrontend();
     }
 
     // ==================== 弹窗 / 微信 ====================
@@ -346,12 +1141,12 @@ public class MainActivity extends AppCompatActivity {
         swipeRefresh.setColorSchemeColors(getColor(R.color.accent), getColor(R.color.accent_light));
         swipeRefresh.setProgressBackgroundColorSchemeColor(getColor(R.color.dark_card));
         swipeRefresh.setOnRefreshListener(() -> {
-            if (!isLoading) { showLoadingOverlay(true); errorOverlay.setVisibility(View.GONE); if (loginHelper != null) loginHelper.reset(); isFirstLoad = true; loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); webView.reload(); }
+            if (!isLoading) { errorOverlay.setVisibility(View.GONE); if (loginHelper != null) loginHelper.reset(); loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); startSilentStartupCheck(); }
             mainHandler.postDelayed(() -> { if (swipeRefresh.isRefreshing()) swipeRefresh.setRefreshing(false); }, 5000);
         });
     }
     private void setupErrorRetry() {
-        retryBtn.setOnClickListener(v -> { errorOverlay.setVisibility(View.GONE); showLoadingOverlay(true); WebViewConfig.clearCache(webView); isFirstLoad = true; loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); webView.loadUrl(HOME_URL); });
+        retryBtn.setOnClickListener(v -> { errorOverlay.setVisibility(View.GONE); WebViewConfig.clearCache(webView); loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); startSilentStartupCheck(); });
     }
 
     // ==================== 进度条 / 加载 / Toast ====================
@@ -389,7 +1184,7 @@ public class MainActivity extends AppCompatActivity {
     // ==================== 返回拦截 ====================
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) { if (keyCode == KeyEvent.KEYCODE_BACK) return handleBackPress(); return super.onKeyDown(keyCode, event); }
     private boolean handleBackPress() {
-        if (errorOverlay.getVisibility() == View.VISIBLE) { errorOverlay.setVisibility(View.GONE); showLoadingOverlay(true); isFirstLoad = true; loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); webView.loadUrl(HOME_URL); return true; }
+        if (errorOverlay.getVisibility() == View.VISIBLE) { errorOverlay.setVisibility(View.GONE); loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); startSilentStartupCheck(); return true; }
         if (webView != null && webView.canGoBack()) { webView.goBack(); return true; }
         long now = System.currentTimeMillis();
         if (now - lastBackPressTime > 2000) { lastBackPressTime = now; toast("再按一次退出"); return true; }
@@ -397,27 +1192,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ==================== 收藏 ====================
-    private void startFavoritesSync() { if (favoritesManager != null && webView != null) favoritesManager.startSync(webView); }
-    private void startFavoritesPeriodicSync() { stopFavoritesPeriodicSync(); favoritesSyncRunnable = () -> { if (isLoggedIn && favoritesManager != null && webView != null && !favoritesManager.isSyncing()) favoritesManager.startSync(webView); mainHandler.postDelayed(favoritesSyncRunnable, FAV_SYNC_INTERVAL_MS); }; mainHandler.post(favoritesSyncRunnable); }
+    private void startFavoritesSync() { if (favoritesManager != null && getAuthWebView() != null) favoritesManager.startSync(getAuthWebView()); }
+    private void startFavoritesPeriodicSync() { stopFavoritesPeriodicSync(); favoritesSyncRunnable = () -> { syncFavoritesInBackground(false); mainHandler.postDelayed(favoritesSyncRunnable, FAV_SYNC_INTERVAL_MS); }; mainHandler.post(favoritesSyncRunnable); }
     private void stopFavoritesPeriodicSync() { if (favoritesSyncRunnable != null) { mainHandler.removeCallbacks(favoritesSyncRunnable); favoritesSyncRunnable = null; } }
 
     private void openFavoritesViewer() {
         if (webView == null || favoritesManager == null) return;
-        lastPageUrl = webView.getUrl();
-        if (isLoggedIn) {
-            if (favoritesManager.isSyncing()) {
-                mainHandler.postDelayed(this::loadFavoritesViewer, 2000);
-            } else {
-                favoritesManager.setListener(new FavoritesManager.SyncListener() {
-                    @Override public void onProgress(String message) { }
-                    @Override public void onComplete(int count) { loadFavoritesViewer(); favoritesManager.setListener(originalFavListener); }
-                    @Override public void onError(String error) { loadFavoritesViewer(); favoritesManager.setListener(originalFavListener); }
-                });
-                favoritesManager.startSync(webView);
-            }
-        } else {
-            loadFavoritesViewer();
+        String cur = webView.getUrl();
+        if (cur != null && !cur.startsWith("file:///android_asset/favorites_viewer")) {
+            pageHistory.push(cur);
         }
+        loadFavoritesViewer();
+        syncFavoritesInBackground(true);
     }
 
     private void loadFavoritesViewer() {
@@ -427,10 +1213,99 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl("file:///android_asset/favorites_viewer.html#data=" + b64);
     }
 
+    private void syncFavoritesInBackground(boolean refreshIfVisible) {
+        if (!isLoggedIn || !WebViewConfig.isNetworkAvailable() || favoritesManager == null || getAuthWebView() == null || favoritesManager.isSyncing()) return;
+        favoritesManager.setListener(new FavoritesManager.SyncListener() {
+            @Override public void onProgress(String message) { }
+            @Override public void onComplete(int count) {
+                favoritesManager.setListener(originalFavListener);
+                if (refreshIfVisible && isFavoritesPageVisible()) { String json = favoritesManager.getData().toString(); String b64 = android.util.Base64.encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP); webView.evaluateJavascript("javascript:(function(){if(window.updateFavoritesData){window.updateFavoritesData('" + b64 + "');}})()", null); }
+                else updateTopBarVisibility();
+            }
+            @Override public void onError(String error) {
+                favoritesManager.setListener(originalFavListener);
+            }
+        });
+        favoritesManager.startSync(getAuthWebView());
+    }
+
+    private boolean isFavoritesPageVisible() {
+        return webView != null && webView.getUrl() != null && webView.getUrl().startsWith("file:///android_asset/favorites_viewer.html");
+    }
+
     // ==================== 生命周期 ====================
-    @Override protected void onResume() { super.onResume(); if (webView != null) { webView.onResume(); webView.resumeTimers(); } if (!isLoggedIn && loginHelper != null) { mainHandler.postDelayed(() -> loginHelper.checkAndFillLoginCode(), 500); } if (isLoggedIn) { startLoginWatchdog(); startFavoritesPeriodicSync(); } }
-    @Override protected void onPause() { super.onPause(); if (webView != null) { webView.onPause(); webView.pauseTimers(); } stopLoginWatchdog(); stopFavoritesPeriodicSync(); }
-    @Override protected void onDestroy() { stopLoginWatchdog(); stopNetworkRetry(); stopFavoritesPeriodicSync(); if (webView != null) { webView.stopLoading(); webView.removeAllViews(); webView.destroy(); webView = null; } mainHandler.removeCallbacksAndMessages(null); super.onDestroy(); }
-    @Override public void onLowMemory() { super.onLowMemory(); if (webView != null) webView.freeMemory(); }
-    @Override public void onConfigurationChanged(Configuration newConfig) { super.onConfigurationChanged(newConfig); if (webView != null) { webView.requestLayout(); if (isPageLoaded) webView.evaluateJavascript("javascript:(function(){window.dispatchEvent(new Event('orientationchange'));})()", null); } if (currentProgress > 0) updateProgressWidth(currentProgress); }
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
+            webView.resumeTimers();
+        }
+        if (backgroundWebView != null) {
+            backgroundWebView.onResume();
+            backgroundWebView.resumeTimers();
+        }
+        if (!isLoggedIn && loginHelper != null) {
+            mainHandler.postDelayed(() -> loginHelper.checkAndFillLoginCode(), 500);
+        }
+        if (isLoggedIn) {
+            startLoginWatchdog();
+            startFavoritesPeriodicSync();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (webView != null) {
+            webView.onPause();
+            webView.pauseTimers();
+        }
+        if (backgroundWebView != null) {
+            backgroundWebView.onPause();
+            backgroundWebView.pauseTimers();
+        }
+        stopLoginWatchdog();
+        stopFavoritesPeriodicSync();
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopLoginWatchdog();
+        stopNetworkRetry();
+        stopFavoritesPeriodicSync();
+        if (webView != null) {
+            webView.stopLoading();
+            webView.removeAllViews();
+            webView.destroy();
+            webView = null;
+        }
+        if (backgroundWebView != null) {
+            backgroundWebView.stopLoading();
+            backgroundWebView.removeAllViews();
+            backgroundWebView.destroy();
+            backgroundWebView = null;
+        }
+        mainHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        if (webView != null) webView.freeMemory();
+        if (backgroundWebView != null) backgroundWebView.freeMemory();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (webView != null) {
+            webView.requestLayout();
+            if (isPageLoaded) {
+                webView.evaluateJavascript("javascript:(function(){window.dispatchEvent(new Event('orientationchange'));})()", null);
+            }
+        }
+        if (currentProgress > 0) updateProgressWidth(currentProgress);
+    }
 }

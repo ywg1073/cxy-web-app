@@ -1,0 +1,1 @@
+const o=r=>Array.isArray(r)?r:Array.isArray(r==null?void 0:r.items)?r.items:Array.isArray(r==null?void 0:r.data)?r.data:[],y=r=>{const s=o(r),n=Array.isArray(r)||r==null?void 0:r.total,e=Number(n),i=Number.isFinite(e)&&e>=0?e:s.length;return{items:s,total:i}};export{y as a,o as n};
