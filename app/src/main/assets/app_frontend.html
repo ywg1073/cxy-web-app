@@ -350,7 +350,7 @@ function renderDrawer(path, pushState){
     + (children.length?children.map(function(ch,i){
         var sid = ch.id || '';
         var sibJson = esc(JSON.stringify(children.map(function(s){return {id:String(s.id),name:s.name}}))).replace(/"/g,'\u0026quot;');
-        return '<div class="chapter-card" data-id="'+sid+'" data-siblings="'+sibJson+'" data-idx="'+i+'" onclick="var d=this.dataset;openPracticeFromApp(d.id,d.siblings,parseInt(d.idx))"><div class="chapter-main"><div><div class="chapter-name">'+esc(ch.name)+'</div><div class="chapter-count">'+esc(categoryMeta(ch))+'</div></div><div class="arrow">›</div></div></div>';
+        return '<div class="chapter-card" data-id="'+sid+'" data-siblings="'+sibJson+'" data-idx="'+i+'" onclick="'+(ch.children&&ch.children.length?'openChild(['+(base||[]).concat([i]).join(',')+'])':'var d=this.dataset;openPracticeFromApp(d.id,d.siblings,parseInt(d.idx))')+'"><div class="chapter-main"><div><div class="chapter-name">'+esc(ch.name)+'</div><div class="chapter-count">'+esc(categoryMeta(ch))+'</div></div><div class="arrow">›</div></div></div>';
       }).join(''):'<div class="chapter-card" onclick="openPracticeFromApp(\''+esc(c.id)+'\')"><div class="chapter-main"><div><div class="chapter-name">开始学习</div><div class="chapter-count">'+esc(c.questionCount||c.totalQuestionCount||'章节题目')+'</div></div><div class="arrow">›</div></div></div>')
     + '</div></div>';
   document.body.appendChild(div);
