@@ -26,6 +26,36 @@ html,body{background:var(--bg);color:var(--text);font-family:-apple-system,PingF
 .modal-box h3{font-size:17px;margin-bottom:14px}.modal-box textarea{width:100%;min-height:120px;border:1px solid var(--stroke);border-radius:12px;background:var(--bg);color:var(--text);padding:12px;font-size:14px}
 .modal-box .char-count{text-align:right;font-size:12px;color:var(--text3);margin:6px 0 12px}
 .modal-box .save-btn{width:100%;padding:12px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:15px;font-weight:800;cursor:pointer}.katex{font-size:1.04em}.katex-display{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}.katex-display>.katex{overflow-x:auto;overflow-y:hidden}
+
+/* Tablet: >=768px */
+@media (min-width:768px){
+.body{padding:24px 48px 120px;max-width:960px;margin:0 auto}
+.block{padding:28px 24px}
+.content{font-size:17px}
+.actions{grid-template-columns:repeat(3,1fr);gap:12px;max-width:700px}
+.action{min-height:50px;font-size:14px}
+.nav{height:90px;padding:16px 48px 24px;gap:16px}
+.nav button{font-size:16px;border-radius:20px}
+.topbar{padding:14px 24px;gap:14px}
+.title h1{font-size:20px}
+.section-btn{padding:10px 20px;font-size:14px}
+.back,.home-btn{width:44px;height:44px;font-size:20px;border-radius:14px}
+.toast{font-size:15px;padding:12px 24px}
+.modal-box{max-width:500px;padding:28px}
+.modal-box textarea{min-height:160px;font-size:16px}
+}
+@media (min-width:1024px){
+.body{max-width:800px;padding:24px 64px 120px}
+.actions{grid-template-columns:repeat(3,1fr);max-width:800px}
+}
+
+/* Tablet: KaTeX larger, scroll smooth */
+@media (min-width:768px){
+.katex{font-size:1.15em}
+.katex-display{margin:16px 0}
+.katex-display>.katex{font-size:1.1em}
+.body{overflow-y:auto;-webkit-overflow-scrolling:touch}
+}
 </style></head>
 <body><div id="app"><div class="loading"><div class="spinner"></div><p>加载题目中...</p></div></div>
 <script>
