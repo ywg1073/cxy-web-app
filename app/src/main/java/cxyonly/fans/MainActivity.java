@@ -1,6 +1,7 @@
 package cxyonly.fans;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -453,6 +454,8 @@ if (!tok.isEmpty()) {
     private void warmAuthWebView(Runnable afterWarm) {
         WebView authView = getAuthWebView();
         if (authView == null) return;
+        // 断网时不尝试加载页面或发请求
+        if (!WebViewConfig.isNetworkAvailable()) { if (afterWarm != null) afterWarm.run(); return; }
         String url = authView.getUrl();
         if (url == null || !url.startsWith("https://cxyonly.fans")) {
             authView.loadUrl(HOME_PAGE_URL);
@@ -460,6 +463,46 @@ if (!tok.isEmpty()) {
         } else {
             authView.evaluateJavascript("javascript:(function(){fetch('/api/site/math-home-config').catch(function(){});return localStorage.getItem('daguan_token')?'warm_token':'warm';})()", r -> mainHandler.postDelayed(afterWarm, 300));
         }
+    }
+
+    // 启动时做一次轻量 auth 检测：取消收藏同步 → 发测试请求 → 有问题弹窗 → 没问题恢复同步
+    private void performStartupAuthCheck() {
+        if (!WebViewConfig.isNetworkAvailable() || getAuthWebView() == null) {
+            // 断网时跳过检测，直接启动定时收藏同步和看门狗
+            startFavoritesPeriodicSync();
+            return;
+        }
+        // 先取消定时的收藏同步（避免检测过程中冲突）
+        stopFavoritesPeriodicSync();
+        // 先预热后台 WebView，确保在 cxyonly.fans 域上执行 JS
+        warmAuthWebView(() -> {
+            // 用轻量 API 验证 token 是否有效（GET /api/user/total_stats 需要认证）
+            String js = "javascript:(function(){"
+                + "var token=localStorage.getItem('daguan_token')||'';"
+                + "var h=token?{'Authorization':'Bearer '+token}:{};"
+                + "try{var x=new XMLHttpRequest();"
+                + "x.open('GET','/api/user/total_stats',false);"
+                + "Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});"
+                + "x.send();"
+                + "return JSON.stringify({status:x.status,ok:x.status>=200&&x.status<300});"
+                + "}catch(e){return JSON.stringify({status:0,ok:false,error:e.message});}"
+                + "})()";
+            getAuthWebView().evaluateJavascript(js, result -> {
+                try {
+                    org.json.JSONObject r = new org.json.JSONObject(result != null ? result : "{}");
+                    if (r.optBoolean("ok", false)) {
+                        // token 有效 → 恢复定时收藏同步和看门狗
+                        startFavoritesPeriodicSync();
+                    } else {
+                        // token 无效 → 弹窗引导重新登录
+                        showSessionExpiredDialog();
+                    }
+                } catch (Exception ignored) {
+                    // JSON 解析异常 → 依然尝试恢复同步
+                    startFavoritesPeriodicSync();
+                }
+            });
+        });
     }
 
     private void loadAppFrontend() {
@@ -503,15 +546,24 @@ if (!tok.isEmpty()) {
             String js = "javascript:(function(){"
                 + "var token=localStorage.getItem('daguan_token')||'';"
                 + "var csrf=localStorage.getItem('csrf_token')||'';"
-                + "var r={success:true,access_token:token,csrf_token:csrf};"
+                + "var r={success:true,access_token:token,csrf_token:csrf,auth_failed:false};"
                 + "var h=token?{'Authorization':'Bearer '+token}:{};"
                 + "if(csrf)h['X-CSRF-Token']=csrf;"
                 + "try{var x=new XMLHttpRequest();"
-                + "x.open('GET','/api/site/math-home-config',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.home=JSON.parse(x.responseText);"
-                + "x.open('GET','/api/categories?include_stats=true',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.categories=JSON.parse(x.responseText);"
-                + "x.open('GET','/api/questions/user/last_study',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.last_study=JSON.parse(x.responseText);"
-                + "x.open('GET','/api/user/daily_stats',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.daily_stats=JSON.parse(x.responseText);"
-                + "x.open('GET','/api/user/total_stats',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();r.total_stats=JSON.parse(x.responseText);"
+                + "x.open('GET','/api/site/math-home-config',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();"
+                + "if(x.status==401||x.status==403){r.auth_failed=true;}else{r.home=JSON.parse(x.responseText);}"
+                + "if(!r.auth_failed){"
+                + "x.open('GET','/api/categories?include_stats=true',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();if(x.status==401||x.status==403){r.auth_failed=true;}else{r.categories=JSON.parse(x.responseText);}"
+                + "}"
+                + "if(!r.auth_failed){"
+                + "x.open('GET','/api/questions/user/last_study',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();if(x.status==401||x.status==403){r.auth_failed=true;}else{r.last_study=JSON.parse(x.responseText);}"
+                + "}"
+                + "if(!r.auth_failed){"
+                + "x.open('GET','/api/user/daily_stats',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();if(x.status==401||x.status==403){r.auth_failed=true;}else{r.daily_stats=JSON.parse(x.responseText);}"
+                + "}"
+                + "if(!r.auth_failed){"
+                + "x.open('GET','/api/user/total_stats',false);Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send();if(x.status==401||x.status==403){r.auth_failed=true;}else{r.total_stats=JSON.parse(x.responseText);}"
+                + "}"
                 + "}catch(e){r.success=false;r.error=e.message;}"
                 + "return JSON.stringify(r);"
                 + "})()";
@@ -522,6 +574,27 @@ if (!tok.isEmpty()) {
                     // 从返回数据中提取 & 缓存 token 和 csrf_token（每次 requestAppData 都刷新）
                     try {
                         org.json.JSONObject obj = new org.json.JSONObject(jsonStr);
+                        // 检测 token 失效（API 返回 401）
+                        if (obj.optBoolean("auth_failed", false)) {
+                            cachedAuthToken = "";
+                            cachedCsrfToken = "";
+                            clearAuthCache();
+                            showSessionExpiredDialog();
+                            return;
+                        }
+                        // 检查响应中的 token 和本地缓存的 token（可能 Vue 已清除 localStorage）
+                        String sentToken = obj.optString("access_token", "");
+                        boolean hadTokenBefore = !cachedAuthToken.isEmpty();
+                        // 如果之前有 token 但响应中 token 为空 → Vue 已清除 localStorage → session 肯定已过期
+                        if (hadTokenBefore && sentToken.isEmpty()) {
+                            cachedAuthToken = "";
+                            cachedCsrfToken = "";
+                            clearAuthCache();
+                            showSessionExpiredDialog();
+                            return;
+                        }
+                        // 注意：不再通过数据字段检测 token 过期（stats 可能为 0 而非过期），
+                        // 401/403 已在 JS 侧通过 auth_failed 检测。
                         // 更新缓存的 token
                         if (obj.has("access_token")) {
                             String t = obj.optString("access_token", "");
@@ -685,12 +758,35 @@ saveAuthCache();
         }
         isAutoRedirect = false;
         showLoadingOverlay(false);
-        // 先从 auth WebView 获取 access_token，再加载练习页
+        // 先从 auth WebView 获取 access_token 和 csrf_token，再加载练习页
         final WebView authView = getAuthWebView();
         if (authView != null) {
-            String js = "javascript:(function(){return localStorage.getItem('daguan_token')||'';})()";
+            String js = "javascript:(function(){return JSON.stringify({token:localStorage.getItem('daguan_token')||'',csrf:localStorage.getItem('csrf_token')||''});})()";
             authView.evaluateJavascript(js, tokenResult -> {
-                String token = tokenResult != null ? tokenResult.replaceAll("\"", "") : "";
+                String token = "";
+                String csrf = "";
+                try {
+                    org.json.JSONObject info = new org.json.JSONObject(tokenResult != null ? tokenResult : "{}");
+                    token = info.optString("token", "");
+                    csrf = info.optString("csrf", "");
+                } catch (Exception ignored) {}
+                // ★ 关键修复：WebView 的 token 被 Vue 清掉，但 Java 有缓存 → 回注回 WebView
+                if (token.isEmpty() && !cachedAuthToken.isEmpty()) {
+                    token = cachedAuthToken;
+                    String injectJs = "javascript:(function(){"
+                        + "localStorage.setItem('daguan_token','" + escapeJsString(token) + "');"
+                        + "return 'ok';})()";
+                    authView.evaluateJavascript(injectJs, null);
+                }
+                // ★ 双重保障：如果都为空，从 SharedPreferences 再读一次
+                if (token.isEmpty()) {
+                    restoreAuthCache();
+                    if (!cachedAuthToken.isEmpty()) {
+                        token = cachedAuthToken;
+                    }
+                }
+                if (!token.isEmpty()) cachedAuthToken = token;
+                if (!csrf.isEmpty()) { cachedCsrfToken = csrf; saveAuthCache(); }
                 StringBuilder json = new StringBuilder();
                 json.append("{\"categoryId\":\"").append(escapeJsonString(categoryId.trim())).append("\"");
                 json.append(",\"access_token\":\"").append(escapeJsonString(token)).append("\"");
@@ -722,6 +818,12 @@ saveAuthCache();
         String safeId = escapeJsString(categoryId.trim());
         final WebView authView = getAuthWebView();
         Runnable doFetch = () -> {
+            // 确保 WebView 中有 token（可能被 Vue 清掉）
+            String ensureTokenJs = "javascript:(function(){"
+                + "var tk=localStorage.getItem('daguan_token');"
+                + "if(!tk || tk==''){localStorage.setItem('daguan_token','" + escapeJsString(cachedAuthToken) + "');}"
+                + "return 'ok';})()";
+            authView.evaluateJavascript(ensureTokenJs, null);
             // 同步 XMLHttpRequest + Authorization header
             String js = "javascript:(function(){"
                 + "var token=localStorage.getItem('daguan_token')||'';"
@@ -764,6 +866,17 @@ saveAuthCache();
         }
     }
 
+    private void notifyActionCompleteWithData(String responseBody) {
+        if (webView != null) {
+            if (responseBody != null && !responseBody.isEmpty()) {
+                String b64 = android.util.Base64.encodeToString(responseBody.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+                webView.evaluateJavascript("javascript:(function(){try{if(window.onPracticeActionCompleteWithData)window.onPracticeActionCompleteWithData('" + b64 + "');}catch(e){}})()", null);
+            } else {
+                notifyActionComplete();
+            }
+        }
+    }
+
     private void performPracticeAction(String action, String questionId) {
         if (action == null || action.trim().isEmpty() || !WebViewConfig.isNetworkAvailable()) {
             notifyActionComplete();
@@ -773,21 +886,28 @@ saveAuthCache();
         String token = cachedAuthToken;
         String csrf = cachedCsrfToken;
         // ⚠️ 不要在 @JavascriptInterface 中调用 getTokenFromAuthWebView（会导致死锁）
-        // API 强制要求 X-CSRF-Token 头（无则 403），所以必须 csrf 非空才能直连
-        if (token == null || token.isEmpty() || csrf == null || csrf.isEmpty()) {
-            // csrf 为空时走 WebView 回退（需要确保 background WebView 有新鲜页面）
-            refreshAuthWebViewThenExecute(safe);
+        // 笔记操作：/api/v1/ 端点只认 cookie 中的 CSRF，不走直连 HTTP
+        if (safe.startsWith("note|")) {
+            executeInAuthWebView(safe);
             return;
         }
-        final String finalToken = token;
-        final String finalCsrf = csrf;
-        final String safeAction = safe;
+        // API 强制要求 X-CSRF-Token 头（无则 403），所以必须 csrf 非空才能直连
+        if (token == null || token.isEmpty() || csrf == null || csrf.isEmpty()) {
+            // csrf 为空时走页面刷新 + 重试
+            refreshPageAndRetry(safe);
+            return;
+        }
 
         // 使用直连 HTTP（更快，不依赖 WebView 状态）
+        executePracticeHttp(safe, token, csrf, false);
+    }
+
+    // 执行直连 HTTP 交互请求，onFailureRefresh=true 时失败后自动刷新页面重试
+    private void executePracticeHttp(String safeAction, String token, String csrf, boolean onFailureRefresh) {
         new Thread(() -> {
             try {
                 String[] parts = safeAction.split("\\|");
-                if (parts.length < 2) return;
+                if (parts.length < 2) { mainHandler.post(MainActivity.this::notifyActionComplete); return; }
                 String act = parts[0];
                 String id = parts[1];
 
@@ -807,54 +927,103 @@ saveAuthCache();
                     else if ("needs_practice".equals(act)) jsonBody = "{\"mastery\":\"needs_practice\"}";
                     else if ("not_known".equals(act)) jsonBody = "{\"mastery\":\"not_known\"}";
                     else if ("not_started".equals(act)) jsonBody = "{\"mastery\":\"not_started\"}";
-                    else return;
+                    else { mainHandler.post(MainActivity.this::notifyActionComplete); return; }
                     method = "PATCH";
                 }
                 java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
                 conn.setRequestMethod(method);
                 conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("Authorization", "Bearer " + finalToken);
-                conn.setRequestProperty("X-CSRF-Token", finalCsrf); // 强制带 csrf
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+                conn.setRequestProperty("X-CSRF-Token", csrf);
                 conn.setConnectTimeout(8000);
                 conn.setReadTimeout(8000);
                 conn.getOutputStream().write(jsonBody.getBytes("UTF-8"));
                 int code = conn.getResponseCode();
                 conn.disconnect();
                 if (code >= 200 && code < 300) {
-                    mainHandler.post(MainActivity.this::notifyActionComplete);
+                    // 成功 → 读取响应体，传给前端更新云端状态
+                    String responseBody = "";
+                    try {
+                        java.io.InputStream is = conn.getInputStream();
+                        java.util.Scanner s = new java.util.Scanner(is, "UTF-8").useDelimiter("\\A");
+                        responseBody = s.hasNext() ? s.next() : "";
+                        is.close();
+                    } catch (Exception ignored) {}
+                    final String resp = responseBody;
+                    mainHandler.post(() -> notifyActionCompleteWithData(resp));
                     return;
                 }
-                // 非 2xx（可能 403/401）→ 清空缓存的 csrf 并回退到 WebView（带页面刷新）
+                // 401 → token 过期，弹窗引导重新登录
+                if (code == 401) {
+                    cachedAuthToken = "";
+                    cachedCsrfToken = "";
+                    clearAuthCache();
+                    mainHandler.post(MainActivity.this::showSessionExpiredDialog);
+                    return;
+                }
+                // 403 或其他错误 → 清空 csrf 缓存
                 cachedCsrfToken = "";
                 saveAuthCache();
             } catch (Exception ignored) {
                 cachedCsrfToken = "";
                 saveAuthCache();
             }
-            // 直连失败 → 刷新 background WebView 页面，确保有新鲜 csrf/token 再执行
-            mainHandler.post(() -> refreshAuthWebViewThenExecute(safeAction));
+            // 直连失败 → 刷新页面获取新鲜 csrf 再重试（仅首次）
+            if (onFailureRefresh) {
+                // 已经用新鲜 csrf 重试过仍失败 → token 很可能已过期
+                mainHandler.post(MainActivity.this::showSessionExpiredDialog);
+            } else {
+                mainHandler.post(() -> refreshPageAndRetry(safeAction));
+            }
         }).start();
     }
 
-    // 刷新 background WebView 页面，等 Vue 初始化后执行交互动作
-    private void refreshAuthWebViewThenExecute(String safeAction) {
+    // 刷新 background WebView 页面获取新鲜 csrf，然后重试直连 HTTP
+    private void refreshPageAndRetry(String safeAction) {
+        WebView av = getAuthWebView();
+        if (av == null || !WebViewConfig.isNetworkAvailable()) { notifyActionComplete(); return; }
+        // 记住当前 csrf，用于后续检测是否已刷新
+        final String oldCsrf = cachedCsrfToken;
+        // 强制加载最新页面，Vue 初始化后会写入新鲜 csrf_token（时间戳会变）
+        av.loadUrl(HOME_PAGE_URL);
+        // 轮询等待 csrf 变化（Vue 完成后 csrf 的时间戳改变），最长约 6s
+        pollForFreshCsrf(safeAction, oldCsrf, 0);
+    }
+
+    // 轮询检测 csrf_token 是否已被 Vue 刷新（通过比较新旧值变化）
+    private void pollForFreshCsrf(String safeAction, String oldCsrf, int attempt) {
+        if (!WebViewConfig.isNetworkAvailable()) { notifyActionComplete(); return; }
+        if (attempt > 12) { // ~6s 超时：12 * 500ms
+            // csrf 一直没有变化 → Vue 未生成新 csrf → token 很可能已过期
+            showSessionExpiredDialog();
+            return;
+        }
         WebView av = getAuthWebView();
         if (av == null) { notifyActionComplete(); return; }
-        // 强制加载最新页面，确保 localStorage 有新鲜 csrf_token
-        av.loadUrl(HOME_PAGE_URL);
-        // 等页面加载 + Vue 初始化（含 csrf_token 写入 localStorage）
-        mainHandler.postDelayed(() -> {
-            executeInAuthWebView(safeAction);
-            fetchAndCacheCsrf();
-            notifyActionComplete();
-        }, 1500);
+        String js = "javascript:(function(){"
+            + "var csrf=localStorage.getItem('csrf_token')||'';"
+            + "if(!csrf){var c=document.cookie.split(';');for(var i=0;i<c.length;i++){var t=c[i].trim();if(t.indexOf('csrf_token=')===0){csrf=t.substring(11);break;}}}"
+            + "return csrf;})()";
+        av.evaluateJavascript(js, r -> {
+            String cs = (r != null && !"null".equals(r)) ? r.replaceAll("^\"|\"$", "") : "";
+            // csrf 已变化（Vue 写入新值） 或 之前为空现在有值 → 认为刷新成功
+            boolean isFresh = !cs.isEmpty() && (oldCsrf.isEmpty() || !cs.equals(oldCsrf));
+            if (isFresh) {
+                cachedCsrfToken = cs;
+                saveAuthCache();
+                executePracticeHttp(safeAction, cachedAuthToken, cs, true);
+            } else {
+                // 还没变化 → 继续轮询
+                mainHandler.postDelayed(() -> pollForFreshCsrf(safeAction, oldCsrf, attempt + 1), 500);
+            }
+        });
     }
 
     // 异步从 WebView 获取 csrf_token 并缓存到 cachedCsrfToken
     private void fetchAndCacheCsrf() {
         WebView av = getAuthWebView();
-        if (av == null) return;
+        if (av == null || !WebViewConfig.isNetworkAvailable()) return;
         String url = av.getUrl();
         if (url == null || !url.startsWith("https://cxyonly.fans")) {
             av.loadUrl(HOME_PAGE_URL);
@@ -1102,10 +1271,56 @@ stopLoginWatchdog();
     private void stopLoginWatchdog() { if (loginWatchdogRunnable != null) { mainHandler.removeCallbacks(loginWatchdogRunnable); loginWatchdogRunnable = null; } }
 
     private void handleTokenLost() {
+        showSessionExpiredDialog();
+    }
+
+    // 弹窗提示登录状态已失效，让用户选择是否重新登录
+    private void showSessionExpiredDialog() {
         if (!isLoggedIn) return;
-        isLoggedIn = false; loginGuideShown = false; stopLoginWatchdog(); stopFavoritesPeriodicSync(); toast("\u26a0\ufe0f 登录已失效，请重新登录");
-        isAutoRedirect = true; loadingStartTime = System.currentTimeMillis(); showLoadingOverlay(true);
-        loadLoginFrontend();
+        // 断网时不弹窗（可能只是网络错误，不是 session 过期）
+        if (!WebViewConfig.isNetworkAvailable()) {
+            return;
+        }
+        isLoggedIn = false;
+        loginGuideShown = false;
+        stopLoginWatchdog();
+        stopFavoritesPeriodicSync();
+        cachedAuthToken = "";
+        cachedCsrfToken = "";
+        clearAuthCache();
+        // 清除后台 WebView 中的 token/csrf
+        WebView av = getAuthWebView();
+        if (av != null) {
+            av.evaluateJavascript("javascript:(function(){localStorage.removeItem('daguan_token');localStorage.removeItem('csrf_token');return 'ok';})()", null);
+        }
+        clearAuthCookies();
+        mainHandler.post(() -> {
+            Dialog dialog = new Dialog(MainActivity.this);
+            dialog.setContentView(R.layout.dialog_session_expired);
+            dialog.setCancelable(false);
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                dialog.getWindow().setDimAmount(0.6f);
+            }
+            Button btnRelogin = dialog.findViewById(R.id.btnRelogin);
+            Button btnCancel = dialog.findViewById(R.id.btnCancel);
+            if (btnRelogin != null) {
+                btnRelogin.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    isAutoRedirect = true;
+                    loadingStartTime = System.currentTimeMillis();
+                    showLoadingOverlay(true);
+                    loadLoginFrontend();
+                });
+            }
+            if (btnCancel != null) {
+                btnCancel.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    loadAppFrontend();
+                });
+            }
+            dialog.show();
+        });
     }
 
     // ==================== 弹窗 / 微信 ====================
@@ -1204,6 +1419,10 @@ stopLoginWatchdog();
         }
         loadFavoritesViewer();
         syncFavoritesInBackground(true);
+        // 在线时刷新 csrf_token，供收藏页交互按钮使用（断网不刷新）
+        if (WebViewConfig.isNetworkAvailable()) {
+            warmAuthWebView(() -> mainHandler.postDelayed(this::fetchAndCacheCsrf, 200));
+        }
     }
 
     private void loadFavoritesViewer() {

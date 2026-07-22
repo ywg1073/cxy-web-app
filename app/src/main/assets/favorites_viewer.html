@@ -908,7 +908,7 @@ function openNote(){
  bx.innerHTML='<h3>'+(existing?'编辑笔记':'添加笔记')+'</h3><textarea id="noteTextarea" maxlength="2000">'+esc(existing)+'</textarea><div class="char-count"><span id="noteCount">'+existing.length+'</span>/2000</div><button class="save-btn" id="noteSave">保存笔记</button><button class="fav-action wide" id="noteCancel" style="margin:8px 0 0">取消</button>';d.appendChild(bx);document.body.appendChild(d);
  var ta=bx.querySelector('#noteTextarea');ta.focus();ta.selectionStart=ta.value.length;
  ta.addEventListener('input',function(){document.getElementById('noteCount').textContent=ta.value.length});
- bx.querySelector('#noteSave').addEventListener('click',function(){var txt=ta.value;q.note=txt;d.remove();ub();toast('笔记已保存');bridge('practiceAction','note|'+id+'|'+encodeURIComponent(txt))});
+ bx.querySelector('#noteSave').addEventListener('click',function(){var txt=ta.value;q.note=txt;d.remove();ub();toast('笔记已保存');bridge('practiceAction','note|'+id+'|'+encodeURIComponent(txt));try{var fc=JSON.parse(localStorage.getItem('fav_cache')||'[]');for(var fi=0;fi<fc.length;fi++){if(fc[fi].id==id){fc[fi].note=txt;break}}localStorage.setItem('fav_cache',JSON.stringify(fc))}catch(e){}});
  bx.querySelector('#noteCancel').addEventListener('click',function(){d.remove()})
 }
 function favActionsHtml(q){
