@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- subtle stroke matching the card stroke in app, diameter 68 fits inside the mask -->
+    <path
+        android:strokeColor="#33FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M 20,54 c 0,-18.7 15.3,-34 34,-34 c 18.7,0 34,15.3 34,34 c 0,18.7 -15.3,34 -34,34 c -18.7,0 -34,-15.3 -34,-34 z" />
+        
+    <!-- Main icon: Brackets and a slash -->
+    <!-- Left Bracket < -->
+    <path
+        android:fillColor="#E94560"
+        android:pathData="M 44,38 L 30,54 L 44,70 L 40,74 L 22,54 L 40,34 Z" />
+        
+    <!-- Right Bracket > -->
+    <path
+        android:fillColor="#E94560"
+        android:pathData="M 64,38 L 78,54 L 64,70 L 68,74 L 86,54 L 68,34 Z" />
+        
+    <!-- Middle Slash / -->
+    <path
+        android:fillColor="#7C4DFF"
+        android:pathData="M 60,32 L 64,32 L 48,76 L 44,76 Z" />
+</vector>

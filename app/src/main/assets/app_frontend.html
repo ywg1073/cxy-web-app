@@ -87,10 +87,10 @@ body::-webkit-scrollbar{display:none;}
 .tab .ico{font-size:19px;line-height:1;}
 .tab.active{color:var(--accent);background:rgba(233,69,96,.08);font-weight:700;}
 .tab:active{transform:scale(.94);}
-.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.56);z-index:120;display:flex;align-items:flex-end;animation:fadeIn .2s ease both;}
+.drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.56);z-index:120;display:flex;align-items:flex-end;animation:fadeIn .2s ease both;will-change:opacity;}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.drawer{width:100%;max-height:72vh;background:var(--surface);border-radius:18px 18px 0 0;border:1px solid var(--stroke);box-shadow:0 -10px 40px rgba(0,0,0,.42);padding:18px 16px 24px;overflow:auto;animation:drawerIn .26s var(--ease) both;}
-@keyframes drawerIn{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.drawer{width:100%;max-height:72vh;background:var(--surface);border-radius:18px 18px 0 0;border:1px solid var(--stroke);box-shadow:0 -10px 40px rgba(0,0,0,.42);padding:18px 16px 24px;overflow:auto;animation:drawerIn .26s var(--ease) both;will-change:transform;}
+@keyframes drawerIn{from{transform:translate3d(0,100%,0)}to{transform:translate3d(0,0,0)}}
 .drawer-handle{width:42px;height:4px;border-radius:99px;background:var(--text-3);opacity:.45;margin:0 auto 16px;}
 .drawer-title{font-size:18px;font-weight:800;margin-bottom:4px;}
 .drawer-sub{font-size:12px;color:var(--text-3);margin-bottom:16px;}
@@ -360,7 +360,7 @@ function renderFavorites(){
   return topbar('收藏题目','') + '<div class="content"><div class="panel" onclick="callAndroid(\'openFavorites\')"><div class="panel-head"><div><div class="eyebrow">本地收藏</div><div class="panel-title">进入收藏本</div><div class="panel-sub">复杂公式使用 KaTeX 渲染，断网也可以打开。</div></div><span class="pill">'+APP_STATE.favoritesCount+' 题</span></div></div><div class="empty"><div class="empty-emoji">★</div><div class="empty-title">点击上方卡片进入收藏</div><div class="empty-sub">收藏页会优先打开本地数据。</div></div></div>';
 }
 function renderMe(){
-  return topbar('我的','') + '<div class="content"><div class="panel"><div class="eyebrow">账户状态</div><div class="panel-title">已登录</div></div><div class="panel" onclick="callAndroid(\'logout\')"><div class="panel-title">退出登录</div><div class="panel-sub">清除当前账号登录状态</div></div></div>';
+  return topbar('我的','') + '<div class="content"><div class="panel"><div class="eyebrow">账户状态</div><div class="panel-title">已登录</div></div><div class="panel" onclick="callAndroid(\'checkUpdate\')"><div class="panel-title">检查更新</div><div class="panel-sub">检查并下载最新版本</div></div><div class="panel" onclick="callAndroid(\'logout\')"><div class="panel-title">退出登录</div><div class="panel-sub">清除当前账号登录状态</div></div></div>';
 }
 // ========== 学习历史 ==========
 let HISTORY_DATA = {events:[], lastStudy:{}, loading:false};

@@ -46,7 +46,8 @@ public class FavoritesManager {
 
     public FavoritesManager(Context context) {
         this.context = context.getApplicationContext();
-        loadFromDisk();
+        // 优化：将耗时的本地磁盘读取和 JSON 解析迁移到子线程，避免阻塞主线程导致启动卡顿
+        new Thread(this::loadFromDisk).start();
     }
 
     public void setListener(SyncListener listener) { this.listener = listener; }

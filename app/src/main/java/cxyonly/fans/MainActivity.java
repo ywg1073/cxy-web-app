@@ -161,6 +161,11 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @android.webkit.JavascriptInterface
+            public void checkUpdate() {
+                mainHandler.post(() -> UpdateChecker.checkWithDialog(MainActivity.this));
+            }
+
+            @android.webkit.JavascriptInterface
             public void syncFavorites() {
                 mainHandler.post(() -> {
                     if (!WebViewConfig.isNetworkAvailable() || !isLoggedIn || favoritesManager == null || getAuthWebView() == null) {
@@ -1364,36 +1369,71 @@ stopLoginWatchdog();
         retryBtn.setOnClickListener(v -> { errorOverlay.setVisibility(View.GONE); WebViewConfig.clearCache(webView); loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); startSilentStartupCheck(); });
     }
 
+    // 优化：动画复用，避免频繁创建对象
+    private android.animation.ValueAnimator progressAnimator;
+    private int fullProgressWidth = -1;
+
     // ==================== 进度条 / 加载 / Toast ====================
     private void animateProgressBar(int target) {
         if (target < currentProgress) currentProgress = target;
         if (target >= PROGRESS_MAX) { currentProgress = PROGRESS_MAX; updateProgressWidth(PROGRESS_MAX); return; }
-        final int t = target;
-        mainHandler.post(new Runnable() {
-            @Override public void run() {
-                if (currentProgress < t) { currentProgress += 2; if (currentProgress > t) currentProgress = t; updateProgressWidth(currentProgress); mainHandler.postDelayed(this, PROGRESS_ANIM_DELAY); }
-            }
+        
+        // 优化：使用属性动画替代频繁的 Handler 消息轮询，平滑更新并避免主线程阻塞
+        if (progressAnimator != null && progressAnimator.isRunning()) {
+            progressAnimator.cancel();
+        }
+        
+        progressAnimator = android.animation.ValueAnimator.ofInt(currentProgress, target);
+        progressAnimator.setDuration((target - currentProgress) * 5L);
+        progressAnimator.addUpdateListener(animation -> {
+            int val = (int) animation.getAnimatedValue();
+            currentProgress = val;
+            updateProgressWidth(val);
         });
+        progressAnimator.start();
     }
     private void updateProgressWidth(int p) {
         if (progressBar == null) return;
-        ViewGroup.LayoutParams lp = progressBar.getLayoutParams();
-        if (lp == null) return;
-        int w = progressBar.getParent() instanceof View ? ((View) progressBar.getParent()).getWidth() : getResources().getDisplayMetrics().widthPixels;
-        if (w <= 0) w = getResources().getDisplayMetrics().widthPixels;
-        lp.width = w * p / PROGRESS_MAX; progressBar.setLayoutParams(lp);
+        
+        // 优化：通过 scaleX 替代修改 LayoutParams 导致的全屏 relayout，极大解决过度绘制和卡顿
+        if (fullProgressWidth <= 0) {
+            fullProgressWidth = progressBar.getParent() instanceof View ? ((View) progressBar.getParent()).getWidth() : getResources().getDisplayMetrics().widthPixels;
+            if (fullProgressWidth <= 0) fullProgressWidth = getResources().getDisplayMetrics().widthPixels;
+            
+            ViewGroup.LayoutParams lp = progressBar.getLayoutParams();
+            if (lp != null) {
+                lp.width = fullProgressWidth;
+                progressBar.setLayoutParams(lp);
+                progressBar.setPivotX(0f);
+            }
+        }
+        
+        float scale = (float) p / PROGRESS_MAX;
+        progressBar.setScaleX(scale);
     }
     private void showLoadingOverlay(boolean show) {
         if (show) {
-            loadingOverlay.setVisibility(View.VISIBLE); loadingOverlay.setAlpha(0f); loadingOverlay.animate().alpha(1f).setDuration(200).start();
+            if (loadingOverlay.getVisibility() != View.VISIBLE || loadingOverlay.getAlpha() < 1f) {
+                loadingOverlay.setVisibility(View.VISIBLE);
+                loadingOverlay.setLayerType(View.LAYER_TYPE_HARDWARE, null); // 优化：动画期间开启硬件加速
+                loadingOverlay.animate().alpha(1f).setDuration(200).withEndAction(() -> loadingOverlay.setLayerType(View.LAYER_TYPE_NONE, null)).start();
+            }
             View logo = findViewById(R.id.loadingLogo);
-            if (logo != null) { Animation anim = AnimationUtils.loadAnimation(this, R.anim.rotate_loader); logo.startAnimation(anim); }
+            if (logo != null && logo.getAnimation() == null) { Animation anim = AnimationUtils.loadAnimation(this, R.anim.rotate_loader); logo.startAnimation(anim); }
         } else {
-            loadingOverlay.animate().alpha(0f).setDuration(300).withEndAction(() -> loadingOverlay.setVisibility(View.GONE)).start();
+            if (loadingOverlay.getVisibility() == View.VISIBLE) {
+                loadingOverlay.setLayerType(View.LAYER_TYPE_HARDWARE, null); // 优化：动画期间开启硬件加速
+                loadingOverlay.animate().alpha(0f).setDuration(300).withEndAction(() -> { loadingOverlay.setVisibility(View.GONE); loadingOverlay.setLayerType(View.LAYER_TYPE_NONE, null); }).start();
+            }
             View logo = findViewById(R.id.loadingLogo); if (logo != null) logo.clearAnimation();
         }
     }
-    private void showErrorPage(String info) { if (errorMsg != null && info != null) errorMsg.setText(info); errorOverlay.setVisibility(View.VISIBLE); errorOverlay.setAlpha(0f); errorOverlay.animate().alpha(1f).setDuration(300).start(); }
+    private void showErrorPage(String info) { 
+        if (errorMsg != null && info != null) errorMsg.setText(info); 
+        errorOverlay.setVisibility(View.VISIBLE); errorOverlay.setAlpha(0f); 
+        errorOverlay.setLayerType(View.LAYER_TYPE_HARDWARE, null); // 优化：动画期间开启硬件加速
+        errorOverlay.animate().alpha(1f).setDuration(300).withEndAction(() -> errorOverlay.setLayerType(View.LAYER_TYPE_NONE, null)).start(); 
+    }
     private void toast(String msg) { Toast t = Toast.makeText(this, msg, Toast.LENGTH_SHORT); t.show(); mainHandler.postDelayed(t::cancel, 1000); }
 
     // ==================== 返回拦截 ====================
@@ -1504,6 +1544,10 @@ stopLoginWatchdog();
             backgroundWebView.removeAllViews();
             backgroundWebView.destroy();
             backgroundWebView = null;
+        }
+        if (progressAnimator != null) {
+            progressAnimator.cancel();
+            progressAnimator = null;
         }
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();

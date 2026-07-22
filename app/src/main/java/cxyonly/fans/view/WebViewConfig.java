@@ -56,15 +56,7 @@ public class WebViewConfig {
         // 设置应用缓存路径
         Context context = CxyApplication.getAppContext();
         String cachePath = context.getCacheDir().getAbsolutePath() + "/" + CACHE_DIR;
-        settings.setAppCachePath(cachePath);
-        settings.setAppCacheEnabled(true);
         settings.setDatabasePath(cachePath);
-
-        // 设置缓存大小（50MB）
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            // Android 10 以下手动设置，以上版本自动管理
-            settings.setAppCacheMaxSize(50 * 1024 * 1024);
-        }
 
         // ========== 渲染加速（防白屏） ==========
         // 启用硬件加速（已在 Activity 中设置）
