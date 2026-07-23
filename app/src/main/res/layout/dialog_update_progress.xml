@@ -31,7 +31,7 @@
         android:layout_height="8dp"
         android:layout_marginTop="12dp"
         android:max="100"
-        android:progressDrawable="@drawable/progress_bar_fg"
+        android:progressDrawable="@drawable/progress_bar_purple"
         android:background="@drawable/progress_track_bg" />
 
     <TextView
@@ -49,7 +49,7 @@
         android:layout_width="match_parent"
         android:layout_height="44dp"
         android:layout_marginTop="28dp"
-        android:background="@drawable/btn_accent_rounded"
+        android:background="@drawable/btn_purple_rounded"
         android:text="安装"
         android:textColor="@color/white"
         android:textSize="15sp"
@@ -61,8 +61,8 @@
         android:layout_width="match_parent"
         android:layout_height="40dp"
         android:layout_marginTop="10dp"
-        android:background="@drawable/btn_outline_rounded"
+        android:background="@drawable/btn_outline_purple_rounded"
         android:text="取消"
-        android:textColor="@color/text_secondary"
+        android:textColor="#7C4DFF"
         android:textSize="14sp" />
 </LinearLayout>

@@ -134,10 +134,15 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onCodeFilled() { }
         });
 
-        startSilentStartupCheck();
-
         // 从持久化存储恢复 token/csrf（避免重启后 WebView localStorage 丢失）
         restoreAuthCache();
+
+        startSilentStartupCheck();
+
+        // 启动时自动检测更新（有网且静默检测）
+        if (WebViewConfig.isNetworkAvailable()) {
+            UpdateChecker.check(this);
+        }
 
         webView.addJavascriptInterface(new Object() {
             @android.webkit.JavascriptInterface
@@ -153,6 +158,12 @@ public class MainActivity extends AppCompatActivity {
                     }
                     loadAppFrontend();
                 });
+            }
+
+            @android.webkit.JavascriptInterface
+            public String getFavoritesData() {
+                if (favoritesManager == null) return "[]";
+                return favoritesManager.getData().toString();
             }
 
             @android.webkit.JavascriptInterface
@@ -173,7 +184,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                     favoritesManager.setListener(new FavoritesManager.SyncListener() {
                         @Override public void onProgress(String message) { }
-                        @Override public void onComplete(int count) { favoritesManager.setListener(originalFavListener); if (isFavoritesPageVisible()) { String json = favoritesManager.getData().toString(); String b64 = android.util.Base64.encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP); webView.evaluateJavascript("javascript:(function(){if(window.updateFavoritesData){window.updateFavoritesData('" + b64 + "');}})()", null); } }
+                        @Override public void onComplete(int count) { favoritesManager.setListener(originalFavListener); if (isFavoritesPageVisible()) { webView.evaluateJavascript("javascript:(function(){if(window.updateFavoritesData){window.updateFavoritesData();}})()", null); } }
                         @Override public void onError(String error) { favoritesManager.setListener(originalFavListener); }
                     });
                     favoritesManager.startSync(getAuthWebView());
@@ -376,13 +387,75 @@ loadAppFrontend();
     }
 
     private void startSilentStartupCheck() {
-        showLoadingOverlay(true);
-        loadingStartTime = System.currentTimeMillis();
         isAutoRedirect = true;
         isFirstLoad = false;
         WebView authView = getAuthWebView();
         if (authView != null) authView.loadUrl(HOME_URL);
-        mainHandler.postDelayed(this::handleHomePageLoaded, 900);
+
+        // 【优化】：如果有缓存，直接静默加载主页，不再展示 Loading 过渡
+        if (!cachedAuthToken.isEmpty()) {
+            isLoggedIn = true;
+            loginGuideShown = false;
+            showLoadingOverlay(false);
+            loadAppFrontend();
+            
+            // 后台静默检测维护和 Token 更新
+            mainHandler.postDelayed(this::silentMaintenanceCheck, 1500);
+        } else {
+            // 没有缓存时，稍微走一下正常的加载检查逻辑并展示 Loading
+            showLoadingOverlay(true);
+            loadingStartTime = System.currentTimeMillis();
+            mainHandler.postDelayed(this::handleHomePageLoaded, 900);
+        }
+    }
+
+    private void silentMaintenanceCheck() {
+        if (!WebViewConfig.isNetworkAvailable()) return;
+        String mJs = "javascript:(function(){var b=document.body?document.body.innerText:'';if(b.indexOf('\u7ef4\u62a4')>=0||b.indexOf('\u5347\u7ea7')>=0)return'maintenance';return'ok';})()";
+        WebView authView = getAuthWebView();
+        if (authView == null) return;
+        authView.evaluateJavascript(mJs, mResult -> {
+            String mr = mResult != null ? mResult.replaceAll("\"", "") : "ok";
+            if ("maintenance".equals(mr)) { 
+                loadMaintenanceFrontend(); 
+                return; 
+            }
+            // 维护检查通过后，静默验证Token
+            checkLoginSilent();
+        });
+    }
+
+    private void checkLoginSilent() {
+        warmAuthWebView(() -> {
+            String js = "javascript:(function(){var token=localStorage.getItem('daguan_token')||'';var csrf=localStorage.getItem('csrf_token')||'';return JSON.stringify({logged_in:!!token,token:token,csrf:csrf});})()";
+            getAuthWebView().evaluateJavascript(js, result -> {
+                try {
+                    org.json.JSONObject info = new org.json.JSONObject(result != null ? result : "{}");
+                    boolean loggedIn = info.optBoolean("logged_in", false);
+                    if (loggedIn) {
+                        String tok = info.optString("token", "");
+                        String cs = info.optString("csrf", "");
+                        if (!tok.isEmpty()) cachedAuthToken = tok;
+                        if (!cs.isEmpty()) cachedCsrfToken = cs;
+                        saveAuthCache();
+                        if (!tok.isEmpty()) {
+                            mainHandler.postDelayed(this::fetchAndCacheCsrf, 500);
+                        }
+                        mainHandler.postDelayed(() -> { if (WebViewConfig.isNetworkAvailable()) { startLoginWatchdog(); startFavoritesPeriodicSync(); } }, 1000);
+                    } else {
+                        // 同步我们存储的缓存到 WebView
+                        warmAuthWebView(() -> {
+                            WebView av = getAuthWebView();
+                            if (av != null) {
+                                String j = "javascript:(function(){localStorage.setItem('daguan_token','"+escapeJsString(cachedAuthToken)+"');})()";
+                                av.evaluateJavascript(j, null);
+                                fetchAndCacheCsrf();
+                            }
+                        });
+                    }
+                } catch (Exception ignored) {}
+            });
+        });
     }
 
     // ==================== 首页 → 维护检测 → 自动路由 ====================
@@ -1434,7 +1507,7 @@ stopLoginWatchdog();
         errorOverlay.setLayerType(View.LAYER_TYPE_HARDWARE, null); // 优化：动画期间开启硬件加速
         errorOverlay.animate().alpha(1f).setDuration(300).withEndAction(() -> errorOverlay.setLayerType(View.LAYER_TYPE_NONE, null)).start(); 
     }
-    private void toast(String msg) { Toast t = Toast.makeText(this, msg, Toast.LENGTH_SHORT); t.show(); mainHandler.postDelayed(t::cancel, 1000); }
+    private void toast(String msg) { cxyonly.fans.util.DarkToast.show(this, msg); }
 
     // ==================== 返回拦截 ====================
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) { if (keyCode == KeyEvent.KEYCODE_BACK) return handleBackPress(); return super.onKeyDown(keyCode, event); }
@@ -1467,9 +1540,7 @@ stopLoginWatchdog();
 
     private void loadFavoritesViewer() {
         if (webView == null || favoritesManager == null) return;
-        String json = favoritesManager.getData().toString();
-        String b64 = android.util.Base64.encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
-        webView.loadUrl("file:///android_asset/favorites_viewer.html#data=" + b64);
+        webView.loadUrl("file:///android_asset/favorites_viewer.html");
     }
 
     private void syncFavoritesInBackground(boolean refreshIfVisible) {
@@ -1478,7 +1549,7 @@ stopLoginWatchdog();
             @Override public void onProgress(String message) { }
             @Override public void onComplete(int count) {
                 favoritesManager.setListener(originalFavListener);
-                if (refreshIfVisible && isFavoritesPageVisible()) { String json = favoritesManager.getData().toString(); String b64 = android.util.Base64.encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP); webView.evaluateJavascript("javascript:(function(){if(window.updateFavoritesData){window.updateFavoritesData('" + b64 + "');}})()", null); }
+                if (refreshIfVisible && isFavoritesPageVisible()) { webView.evaluateJavascript("javascript:(function(){if(window.updateFavoritesData){window.updateFavoritesData();}})()", null); }
                 else updateTopBarVisibility();
             }
             @Override public void onError(String error) {

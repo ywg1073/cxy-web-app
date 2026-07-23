@@ -427,13 +427,14 @@ function b64DecodeUtf8(str) {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
-function loadFromHash() {
-  const hash = location.hash;
-  if (hash.startsWith('#data=')) {
-    try { FAVORITES_DATA = JSON.parse(b64DecodeUtf8(hash.substring(6))); }
-    catch(e) { FAVORITES_DATA = []; }
-    // 缓存到 localStorage（离线可用）
-    try{localStorage.setItem('fav_cache',JSON.stringify(FAVORITES_DATA));}catch(e){}
+function loadData() {
+  if (window.Android && typeof window.Android.getFavoritesData === 'function') {
+    try {
+      FAVORITES_DATA = JSON.parse(window.Android.getFavoritesData());
+      try{localStorage.setItem('fav_cache',JSON.stringify(FAVORITES_DATA));}catch(e){}
+    } catch (e) {
+      FAVORITES_DATA = [];
+    }
   } else {
     // 尝试从 localStorage 加载缓存
     try{
@@ -449,7 +450,7 @@ window.init = function(d) {
   try{localStorage.setItem('fav_cache',JSON.stringify(FAVORITES_DATA));}catch(e){}
   renderList();
 };
-loadFromHash();
+loadData();
 // 初始化 popstate 监听
 setTimeout(function(){ fv_popReady = true; history.replaceState({fv_view:'base'}, ''); },0);
 // 进入时触发静默同步
@@ -495,15 +496,19 @@ function getFilteredFavorites() {
   }
   return all;
 }
+var refreshListTimer = null;
 function togglePath(path) {
   var idx = selectedPaths.indexOf(path);
   if (idx >= 0) selectedPaths.splice(idx, 1);
   else selectedPaths.push(path);
-  refreshListView();
+  
+  if (refreshListTimer) clearTimeout(refreshListTimer);
+  refreshListTimer = setTimeout(refreshListView, 150);
 }
 function selectAllPaths() {
   selectedPaths = [];
-  refreshListView();
+  if (refreshListTimer) clearTimeout(refreshListTimer);
+  refreshListTimer = setTimeout(refreshListView, 150);
 }
 function filterLabel() {
   if (selectedPaths.length === 0) return '全部收藏';
@@ -519,24 +524,30 @@ function showFilterDrawer() {
   renderFilterDrawer();
 }
 function renderFilterDrawer() {
-  // 移除旧抽屉
-  var old = document.getElementById('filterDrawer');
-  if (old) old.remove();
   var paths = getAllPaths();
-  var html = '<div class="drawer-mask" onclick="if(event.target===this)closeFilterDrawer()"><div class="drawer">'
+  var btnsHtml = '<button class="filter-item' + (selectedPaths.length===0?' active':'') + '" data-path="__all__"><span class="filter-check">' + (selectedPaths.length===0?'✓':'') + '</span>全部收藏</button>';
+  paths.forEach(function(p){
+    var sel = isPathSelected(p);
+    btnsHtml += '<button class="filter-item' + (sel?' active':'') + '" data-path="' + p.replace(/&/g,'&amp;').replace(/"/g,'"') + '"><span class="filter-check">' + (sel?'✓':'') + '</span>' + esc(p) + '</button>';
+  });
+
+  var old = document.getElementById('filterDrawer');
+  if (old) {
+    var flist = old.querySelector('.filter-list');
+    if (flist) flist.innerHTML = btnsHtml;
+    return;
+  }
+
+  var fullHtml = '<div class="drawer-mask" onclick="if(event.target===this)closeFilterDrawer()"><div class="drawer">'
     + '<div class="drawer-handle"></div>'
     + '<div class="drawer-title">题目分类</div>'
     + '<div class="drawer-sub">可多选，点选即生效</div>'
     + '<div class="filter-list">'
-    + '<button class="filter-item' + (selectedPaths.length===0?' active':'') + '" data-path="__all__"><span class="filter-check">' + (selectedPaths.length===0?'✓':'') + '</span>全部收藏</button>';
-  paths.forEach(function(p){
-    var sel = isPathSelected(p);
-    html += '<button class="filter-item' + (sel?' active':'') + '" data-path="' + p.replace(/&/g,'&amp;').replace(/"/g,'"') + '"><span class="filter-check">' + (sel?'✓':'') + '</span>' + esc(p) + '</button>';
-  });
-  html += '</div></div></div>';
+    + btnsHtml
+    + '</div></div></div>';
   var div = document.createElement('div');
   div.id = 'filterDrawer';
-  div.innerHTML = html;
+  div.innerHTML = fullHtml;
   // 点击事件委托
   div.addEventListener('click', function(e){
     var item = e.target.closest('.filter-item');
@@ -545,7 +556,7 @@ function renderFilterDrawer() {
     if (path === '__all__') { selectAllPaths(); closeFilterDrawer(); }
     else {
       togglePath(path);
-      // 重新渲染抽屉内的按钮状态（✓ + active 类），保持打开
+      // 重新渲染抽屉内的按钮状态
       renderFilterDrawer();
     }
   });
@@ -569,20 +580,43 @@ function renderMath(container) {
   } catch(e) {}
 }
 
+var renderMathTimer = null;
+function asyncRenderMathList(app) {
+  if (renderMathTimer) clearTimeout(renderMathTimer);
+  var cards = app.querySelectorAll('.card-preview:not(.rendered)');
+  if (cards.length === 0) return;
+  var index = 0;
+  function processChunk() {
+    var chunkEnd = Math.min(index + 10, cards.length);
+    while (index < chunkEnd) {
+      var card = cards[index];
+      try { renderMathInElement(card, KATEX_OPTIONS); } catch(e) {}
+      card.classList.add('rendered');
+      index++;
+    }
+    if (index < cards.length) {
+      renderMathTimer = setTimeout(processChunk, 16);
+    }
+  }
+  processChunk();
+}
+
 function renderList() {
   isDetailView = false;
   const app = document.getElementById('app');
-  const filtered = getFilteredFavorites();
+  
   const paths = getAllPaths();
 
   let cardsHtml = '';
-  if (filtered.length === 0) {
+  if (FAVORITES_DATA.length === 0) {
     cardsHtml = '<div class="empty"><div class="empty-emoji">📭</div><div class="empty-text">暂无收藏题目</div><div class="empty-sub">收藏后会显示在这里</div></div>';
   } else {
-    cardsHtml = filtered.map((q, i) => {
+    cardsHtml = FAVORITES_DATA.map((q, i) => {
       const idx = FAVORITES_DATA.indexOf(q);
       const ck = catKey(q.category);
-      return '<div class="card" style="--i:' + i + '" onclick="showDetail(' + idx + ')">'
+      const isVisible = (selectedPaths.length === 0) || (q.categoryPath && selectedPaths.indexOf(q.categoryPath) >= 0);
+      const displayStyle = isVisible ? "" : "display:none;";
+      return '<div class="card" data-path="' + (q.categoryPath?esc(q.categoryPath):'') + '" style="--i:' + i + ';' + displayStyle + '" onclick="showDetail(' + idx + ')">'
         + '<div class="card-bar cat-' + ck + '"></div>'
         + '<div class="card-head">'
         +   '<span class="card-tag cat-' + ck + '">' + catName(q.category) + '</span>'
@@ -603,20 +637,23 @@ function renderList() {
     + '<div style="position:relative;overflow:hidden">'
     +   '<div class="pull-refresh" id="pullRefresh"><span class="pr-spinner"></span><span class="pr-text" id="prText">↓ 下拉刷新</span></div>'
     +   '<button class="filter-trigger" onclick="showFilterDrawer()">' + esc(filterLabel()) + ' <span class="arrow-down">▼</span></button>'
-    +   '<div class="list">' + cardsHtml + '</div>'
+    +   '<div class="list"></div>'
     + '</div>'
     + '<button class="fab-back" onclick="bridgeBack()">返回</button>'
     + '</div>';
 
-  if (filtered.length > 0) {
-    setTimeout(function(){
-      var cards = app.querySelectorAll('.card-preview');
-      for(var ci=0;ci<cards.length;ci++){
-        try{renderMathInElement(cards[ci],KATEX_OPTIONS);}catch(e){}
-        cards[ci].classList.add('rendered');
+  setTimeout(function() {
+    var listEl = app.querySelector('.list');
+    if (listEl) {
+      listEl.innerHTML = cardsHtml;
+      if (FAVORITES_DATA.length > 0) {
+        setTimeout(function(){
+          asyncRenderMathList(listEl);
+        }, 50);
       }
-    }, 80);
-  }
+    }
+    refreshListView();
+  }, 120);
 }
 
 // 刷新列表视图：只更新列表内容和筛选按钮文字
@@ -631,13 +668,15 @@ function refreshListView() {
   // 更新列表内容
   var listEl = app.querySelector('.list');
   if (listEl) {
-    if (filtered.length === 0) {
+    if (FAVORITES_DATA.length === 0) {
       listEl.innerHTML = '<div class="empty"><div class="empty-emoji">📭</div><div class="empty-text">暂无收藏题目</div><div class="empty-sub">收藏后会显示在这里</div></div>';
     } else {
       listEl.innerHTML = filtered.map(function(q, i){
         var idx = FAVORITES_DATA.indexOf(q);
 var ck = catKey(q.category);
-return '<div class="card" style="--i:' + i + '" onclick="showDetail(' + idx + ')">'
+const isVisible = (selectedPaths.length === 0) || (q.categoryPath && selectedPaths.indexOf(q.categoryPath) >= 0);
+      const displayStyle = isVisible ? "" : "display:none;";
+      return '<div class="card" data-path="' + (q.categoryPath?esc(q.categoryPath):'') + '" style="--i:' + i + ';' + displayStyle + '" onclick="showDetail(' + idx + ')">'
 + '<div class="card-bar cat-' + ck + '"></div>'
 + '<div class="card-head">'
 +   '<span class="card-tag cat-' + ck + '">' + catName(q.category) + '</span>'
@@ -647,13 +686,9 @@ return '<div class="card" style="--i:' + i + '" onclick="showDetail(' + idx + ')
           + '</div>';
       }).join('');
     }
-    // 逐个渲染卡片预览中的 KaTeX，渲染后渐显
+    // 异步分块渲染卡片预览中的 KaTeX，避免卡顿
     setTimeout(function(){
-      var cards = listEl.querySelectorAll('.card-preview');
-      for(var ci=0;ci<cards.length;ci++){
-        try{renderMathInElement(cards[ci],KATEX_OPTIONS);}catch(e){}
-        cards[ci].classList.add('rendered');
-      }
+      asyncRenderMathList(listEl);
     }, 50);
   }
 }
@@ -780,9 +815,10 @@ function showDetail(idx) {
   }
 }
 
-window.updateFavoritesData = function(b64){
+window.updateFavoritesData = function(){
   try{
-    var data = JSON.parse(b64DecodeUtf8(b64));
+    if (!window.Android || typeof window.Android.getFavoritesData !== 'function') return;
+    var data = JSON.parse(window.Android.getFavoritesData());
     if(Array.isArray(data) && data.length >= 0){
       if(JSON.stringify(data)===JSON.stringify(FAVORITES_DATA)) return;
       // 保留本地已有笔记
@@ -815,7 +851,7 @@ function updateListInPlace(data){
   var subEl = app.querySelector('.topbar .sub');
   if(subEl) subEl.innerHTML = '共 ' + data.length + ' 题 · <span id="syncStatus">已同步</span>';
   // 直接刷新当前列表视图（保留 topbar 和页面结构）
-  refreshListView();
+  renderList();
 }
 function toggleBlock(btn) {
   var wrap = btn.nextElementSibling;

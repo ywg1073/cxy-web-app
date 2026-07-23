@@ -1,0 +1,111 @@
+import sys
+
+with open("app/src/main/assets/favorites_viewer.html", "r", encoding="utf-8") as f:
+    html = f.read()
+
+html = html.replace("const filtered = getFilteredFavorites();", "")
+
+html = html.replace("if (filtered.length === 0) {", "if (FAVORITES_DATA.length === 0) {")
+html = html.replace("cardsHtml = filtered.map((q, i) => {", "cardsHtml = FAVORITES_DATA.map((q, i) => {")
+
+old_card_return = "return '<div class=\"card\" style=\"--i:' + i + '\" onclick=\"showDetail(' + idx + ')\">'"
+new_card_return = "const isVisible = (selectedPaths.length === 0) || (q.categoryPath && selectedPaths.indexOf(q.categoryPath) >= 0);\n      const displayStyle = isVisible ? \"\" : \"display:none;\";\n      return '<div class=\"card\" data-path=\"' + (q.categoryPath?esc(q.categoryPath):'') + '\" style=\"--i:' + i + ';' + displayStyle + '\" onclick=\"showDetail(' + idx + ')\">'"
+html = html.replace(old_card_return, new_card_return)
+
+html = html.replace("if (filtered.length > 0) {", "if (FAVORITES_DATA.length > 0) {")
+
+old_settimeout = """      if (FAVORITES_DATA.length > 0) {
+        setTimeout(function(){
+          asyncRenderMathList(listEl);
+        }, 50);
+      }
+    }
+  }, 120);
+}"""
+new_settimeout = """      if (FAVORITES_DATA.length > 0) {
+        setTimeout(function(){
+          asyncRenderMathList(listEl);
+        }, 50);
+      }
+    }
+    refreshListView();
+  }, 120);
+}"""
+html = html.replace(old_settimeout, new_settimeout)
+
+old_refresh = """function refreshListView() {
+  var app = document.getElementById('app');
+  var filtered = getFilteredFavorites();
+
+  // 更新筛选按钮文字
+  var trigger = app.querySelector('.filter-trigger');
+  if (trigger) trigger.innerHTML = esc(filterLabel()) + ' <span class="arrow-down">▼</span>';
+
+  // 更新列表内容
+  var listEl = app.querySelector('.list');
+  if (listEl) {
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<div class="empty"><div class="empty-emoji">📭</div><div class="empty-text">暂无收藏题目</div><div class="empty-sub">收藏后会显示在这里</div></div>';
+    } else {
+      listEl.innerHTML = filtered.map(function(q, i){
+        var idx = FAVORITES_DATA.indexOf(q);
+var ck = catKey(q.category);
+return '<div class="card" style="--i:' + i + '" onclick="showDetail(' + idx + ')">'
++ '<div class="card-bar cat-' + ck + '"></div>'
++ '<div class="card-head">'
++   '<span class="card-tag cat-' + ck + '">' + catName(q.category) + '</span>'
++   '<span class="card-src">' + esc(q.source) + ' · #' + (q.questionNumber||'') + '</span>'
++ '</div>'
++ favCardPreview(q, idx)
+          + '</div>';
+      }).join('');
+    }
+    // 异步分块渲染卡片预览中的 KaTeX，避免卡顿
+    setTimeout(function(){
+      asyncRenderMathList(listEl);
+    }, 50);
+  }
+}"""
+
+new_refresh = """function refreshListView() {
+  var app = document.getElementById('app');
+
+  var trigger = app.querySelector('.filter-trigger');
+  if (trigger) trigger.innerHTML = esc(filterLabel()) + ' <span class="arrow-down">▼</span>';
+
+  var listEl = app.querySelector('.list');
+  if (listEl) {
+    var cards = listEl.querySelectorAll('.card');
+    var visibleCount = 0;
+    for(var i=0; i<cards.length; i++) {
+      var path = cards[i].getAttribute('data-path');
+      var isVisible = (selectedPaths.length === 0) || (path && selectedPaths.indexOf(path) >= 0);
+      if(isVisible) {
+        cards[i].style.display = '';
+        cards[i].style.animation = 'none';
+        visibleCount++;
+      } else {
+        cards[i].style.display = 'none';
+      }
+    }
+    
+    var emptyEl = listEl.querySelector('.empty.filtered-empty');
+    if (visibleCount === 0 && FAVORITES_DATA.length > 0) {
+      if (!emptyEl) {
+        var emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty filtered-empty';
+        emptyDiv.innerHTML = '<div class="empty-emoji">📭</div><div class="empty-text">该分类下暂无题目</div>';
+        listEl.appendChild(emptyDiv);
+      } else {
+        emptyEl.style.display = '';
+      }
+    } else if (emptyEl) {
+      emptyEl.style.display = 'none';
+    }
+  }
+}"""
+
+html = html.replace(old_refresh, new_refresh)
+
+with open("app/src/main/assets/favorites_viewer.html", "w", encoding="utf-8") as f:
+    f.write(html)

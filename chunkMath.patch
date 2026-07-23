@@ -1,0 +1,69 @@
+--- app/src/main/assets/favorites_viewer.html
++++ app/src/main/assets/favorites_viewer.html
+@@ -563,8 +563,33 @@
+   history.back();
+ }
+ function renderMath(container) {
+   try {
+     renderMathInElement(container, KATEX_OPTIONS);
+   } catch(e) {}
+ }
+ 
++var renderMathTimer = null;
++function asyncRenderMathList(cardsHtml, app) {
++  if (renderMathTimer) clearTimeout(renderMathTimer);
++  
++  // Find unrendered cards
++  var cards = app.querySelectorAll('.card-preview:not(.rendered)');
++  var index = 0;
++  
++  function processChunk() {
++    var chunkEnd = Math.min(index + 10, cards.length); // render 10 cards per frame
++    while (index < chunkEnd) {
++      var card = cards[index];
++      try{ renderMathInElement(card, KATEX_OPTIONS); }catch(e){}
++      card.classList.add('rendered');
++      index++;
++    }
++    
++    if (index < cards.length) {
++      renderMathTimer = setTimeout(processChunk, 16); // yield to browser
++    }
++  }
++  
++  if (cards.length > 0) processChunk();
++}
++
+ function renderList() {
+   isDetailView = false;
+   const app = document.getElementById('app');
+@@ -610,13 +635,7 @@
+     + '</div>';
+ 
+   if (filtered.length > 0) {
+-    setTimeout(function(){
+-      var cards = app.querySelectorAll('.card-preview');
+-      for(var ci=0;ci<cards.length;ci++){
+-        try{renderMathInElement(cards[ci],KATEX_OPTIONS);}catch(e){}
+-        cards[ci].classList.add('rendered');
+-      }
+-    }, 80);
++    asyncRenderMathList(cardsHtml, app);
+   }
+ }
+ 
+@@ -645,13 +664,7 @@
+     var listContainer = app.querySelector('.list');
+     if (listContainer) listContainer.innerHTML = cardsHtml;
+     if (filtered.length > 0) {
+-      setTimeout(function(){
+-        var cards = app.querySelectorAll('.card-preview:not(.rendered)');
+-        for(var ci=0;ci<cards.length;ci++){
+-          try{renderMathInElement(cards[ci],KATEX_OPTIONS);}catch(e){}
+-          cards[ci].classList.add('rendered');
+-        }
+-      }, 50);
++      asyncRenderMathList(cardsHtml, app);
+     }
+   }
+ }

@@ -38,6 +38,7 @@ public class UpdateChecker {
 
     public static class UpdateInfo {
         public String latestVersion;
+        public String currentVersion;
         public String downloadUrl;
         public boolean hasUpdate;
         public String error;
@@ -53,7 +54,7 @@ public class UpdateChecker {
 
     private static void check(Context context, boolean forceShow) {
         if (forceShow) {
-            Toast.makeText(context, "正在检查更新...", Toast.LENGTH_SHORT).show();
+            cxyonly.fans.util.DarkToast.show(context, "正在检查更新...");
         }
         executor.execute(() -> {
             try {
@@ -61,20 +62,20 @@ public class UpdateChecker {
                 mainHandler.post(() -> {
                     if (info.error != null) {
                         if (forceShow) {
-                            Toast.makeText(context, "检查更新失败: " + info.error, Toast.LENGTH_SHORT).show();
+                            cxyonly.fans.util.DarkToast.show(context, "检查更新失败: " + info.error);
                         }
                         return;
                     }
                     if (info.hasUpdate) {
                         showUpdateDialog(context, info);
                     } else if (forceShow) {
-                        Toast.makeText(context, "当前已是最新版本 (" + info.latestVersion + ")", Toast.LENGTH_SHORT).show();
+                        cxyonly.fans.util.DarkToast.show(context, "当前已是最新版本 (" + info.currentVersion + ")");
                     }
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
                     if (forceShow) {
-                        Toast.makeText(context, "检查更新异常: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        cxyonly.fans.util.DarkToast.show(context, "检查更新异常: " + e.getMessage());
                     }
                 });
             }
@@ -157,6 +158,7 @@ public class UpdateChecker {
 
             info.latestVersion = latestVersion;
             info.downloadUrl = downloadUrl;
+            info.currentVersion = currentVer;
 
             String latestVer = stripV(latestVersion);
             
@@ -299,20 +301,20 @@ public class UpdateChecker {
                         tvProgressText.setText("100%");
                         tvProgressTitle.setText("下载完成");
                         tvProgressMessage.setText("即将开始安装新版本");
-                        btnCancel.setVisibility(View.GONE);
+                        btnCancel.setVisibility(View.VISIBLE);
                         btnInstall.setVisibility(View.VISIBLE);
                         btnInstall.setOnClickListener(v -> installApk(context, apkFile));
                         installApk(context, apkFile);
                     });
                 } else {
-                    mainHandler.post(() -> Toast.makeText(context, "已取消下载", Toast.LENGTH_SHORT).show());
+                    mainHandler.post(() -> cxyonly.fans.util.DarkToast.show(context, "已取消下载"));
                 }
 
             } catch (Exception e) {
                 final String err = e.getMessage();
                 mainHandler.post(() -> {
                     progressDialog.dismiss();
-                    Toast.makeText(context, "下载失败: " + err, Toast.LENGTH_SHORT).show();
+                    cxyonly.fans.util.DarkToast.show(context, "下载失败: " + err);
                 });
             } finally {
                 try { if (is != null) is.close(); } catch (Exception ignored) {}
@@ -335,7 +337,7 @@ public class UpdateChecker {
         try {
             context.startActivity(intent);
         } catch (Exception e) {
-            Toast.makeText(context, "安装失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            cxyonly.fans.util.DarkToast.show(context, "安装失败: " + e.getMessage());
         }
     }
 }
