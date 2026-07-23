@@ -105,6 +105,11 @@ body::-webkit-scrollbar{display:none;}
 
 /* Tablet: >=768px */
 @media (min-width:768px){
+
+.drawer-mask{align-items:center;justify-content:center;}
+.drawer{max-width:440px;border-radius:24px;max-height:85vh;}
+.drawer-handle{display:none;}
+
 .content{padding:24px 32px 12px;max-width:960px;margin:0 auto}
 .stats-grid{grid-template-columns:repeat(4,1fr);gap:18px}
 .stat-card{padding:24px 20px;min-height:150px}
@@ -139,7 +144,7 @@ body::-webkit-scrollbar{display:none;}
 .chapter-preview .katex{font-size:1.15em}
 .chapter-preview .katex-display{margin:14px 0}
 #app{overflow-y:auto;-webkit-overflow-scrolling:touch}
-.drawer{max-height:68vh}
+
 }
 </style>
 </head>

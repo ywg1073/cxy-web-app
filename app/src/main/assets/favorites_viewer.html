@@ -331,6 +331,11 @@ body::-webkit-scrollbar { display:none; }
 
 /* Tablet: >=768px */
 @media (min-width:768px){
+
+.drawer-mask{align-items:center;justify-content:center;}
+.drawer{max-width:440px;border-radius:24px;max-height:85vh;}
+.drawer-handle{display:none;}
+
 .topbar{padding:14px 24px;gap:14px}
 .topbar-title h1{font-size:20px}
 .topbar-back,.topbar-home{width:44px;height:44px;font-size:20px;border-radius:14px}
@@ -659,7 +664,6 @@ function renderList() {
 // 刷新列表视图：只更新列表内容和筛选按钮文字
 function refreshListView() {
   var app = document.getElementById('app');
-  var filtered = getFilteredFavorites();
 
   // 更新筛选按钮文字
   var trigger = app.querySelector('.filter-trigger');
@@ -668,28 +672,33 @@ function refreshListView() {
   // 更新列表内容
   var listEl = app.querySelector('.list');
   if (listEl) {
-    if (FAVORITES_DATA.length === 0) {
-      listEl.innerHTML = '<div class="empty"><div class="empty-emoji">📭</div><div class="empty-text">暂无收藏题目</div><div class="empty-sub">收藏后会显示在这里</div></div>';
-    } else {
-      listEl.innerHTML = filtered.map(function(q, i){
-        var idx = FAVORITES_DATA.indexOf(q);
-var ck = catKey(q.category);
-const isVisible = (selectedPaths.length === 0) || (q.categoryPath && selectedPaths.indexOf(q.categoryPath) >= 0);
-      const displayStyle = isVisible ? "" : "display:none;";
-      return '<div class="card" data-path="' + (q.categoryPath?esc(q.categoryPath):'') + '" style="--i:' + i + ';' + displayStyle + '" onclick="showDetail(' + idx + ')">'
-+ '<div class="card-bar cat-' + ck + '"></div>'
-+ '<div class="card-head">'
-+   '<span class="card-tag cat-' + ck + '">' + catName(q.category) + '</span>'
-+   '<span class="card-src">' + esc(q.source) + ' · #' + (q.questionNumber||'') + '</span>'
-+ '</div>'
-+ favCardPreview(q, idx)
-          + '</div>';
-      }).join('');
+    var cards = listEl.querySelectorAll('.card');
+    var visibleCount = 0;
+    for (var i = 0; i < cards.length; i++) {
+      var path = cards[i].getAttribute('data-path');
+      var isVisible = (selectedPaths.length === 0) || (path && selectedPaths.indexOf(path) >= 0);
+      if (isVisible) {
+        cards[i].style.display = '';
+        cards[i].style.animation = 'none'; // 移除可能导致闪烁的入场动画
+        visibleCount++;
+      } else {
+        cards[i].style.display = 'none';
+      }
     }
-    // 异步分块渲染卡片预览中的 KaTeX，避免卡顿
-    setTimeout(function(){
-      asyncRenderMathList(listEl);
-    }, 50);
+
+    var emptyEl = listEl.querySelector('.empty.filtered-empty');
+    if (visibleCount === 0 && FAVORITES_DATA.length > 0) {
+      if (!emptyEl) {
+        var emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty filtered-empty';
+        emptyDiv.innerHTML = '<div class="empty-emoji">📭</div><div class="empty-text">该分类下暂无题目</div>';
+        listEl.appendChild(emptyDiv);
+      } else {
+        emptyEl.style.display = '';
+      }
+    } else if (emptyEl) {
+      emptyEl.style.display = 'none';
+    }
   }
 }
 

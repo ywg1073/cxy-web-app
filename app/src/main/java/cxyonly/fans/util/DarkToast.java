@@ -17,7 +17,8 @@ public class DarkToast {
         tv.setText(message);
         toast.setView(view);
         toast.setDuration(Toast.LENGTH_SHORT);
-        toast.setGravity(Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 160);
+        int yOffset = (int) (140 * context.getResources().getDisplayMetrics().density);
+        toast.setGravity(Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, yOffset);
         toast.show();
     }
 }
