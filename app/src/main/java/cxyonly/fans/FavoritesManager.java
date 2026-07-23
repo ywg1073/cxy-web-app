@@ -183,38 +183,48 @@ public class FavoritesManager {
                 // 选项：组装成 HTML（选择题选项，放在题目下方直接展示）
                 JSONArray options = item.optJSONArray("options");
                 if (options != null && options.length() > 0) {
-                    StringBuilder optsHtml = new StringBuilder();
-                    for (int j = 0; j < options.length(); j++) {
-                        JSONObject opt = options.optJSONObject(j);
-                        if (opt == null) continue;
-                        String label = opt.optString("label", "");
-                        String content = opt.optString("content_md", "");
-                        optsHtml.append("<p><strong>").append(label).append(".</strong> ")
-                                .append(content).append("</p>");
-                    }
-                    // 选项单独存储，详情页中直接放在题目下方
-                    entry.put("optionsHTML", optsHtml.toString());
-
-                    // 正确答案（折叠区域）
                     JSONObject answerObj = item.optJSONObject("answer");
+                    StringBuilder correctLabels = new StringBuilder();
                     if (answerObj != null) {
                         JSONArray correctIds = answerObj.optJSONArray("option_ids");
                         if (correctIds != null && correctIds.length() > 0) {
-                            StringBuilder correctLabels = new StringBuilder();
                             for (int j = 0; j < correctIds.length(); j++) {
                                 String optId = correctIds.optString(j, "");
                                 for (int k = 0; k < options.length(); k++) {
                                     JSONObject opt = options.optJSONObject(k);
                                     if (opt == null) continue;
                                     if (optId.equals(opt.optString("id", ""))) {
-                                        if (correctLabels.length() > 0) correctLabels.append("、");
+                                        if (correctLabels.length() > 0) correctLabels.append(",");
                                         correctLabels.append(opt.optString("label", ""));
                                         break;
                                     }
                                 }
                             }
+                        }
+                    }
+                    entry.put("correctLabels", correctLabels.toString());
+                    
+                    StringBuilder optsHtml = new StringBuilder();
+                    for (int j = 0; j < options.length(); j++) {
+                        JSONObject opt = options.optJSONObject(j);
+                        if (opt == null) continue;
+                        String label = opt.optString("label", "");
+                        String content = opt.optString("content_md", "");
+                        optsHtml.append("<div class=\"option-item\" data-label=\"").append(label).append("\" onclick=\"checkOption(this)\">")
+                                .append("<div class=\"opt-label\">").append(label).append(".</div> ")
+                                .append("<div class=\"opt-text\">").append(content).append("</div>")
+                                .append("</div>");
+                    }
+                    // 选项单独存储，详情页中直接放在题目下方
+                    entry.put("optionsHTML", optsHtml.toString());
+
+                    // 正确答案（折叠区域）
+                    if (answerObj != null) {
+                        JSONArray correctIds = answerObj.optJSONArray("option_ids");
+                        if (correctIds != null && correctIds.length() > 0) {
+                            String cLabelsStr = correctLabels.toString().replace(",", "、");
                             entry.put("answerHTML",
-                                    "<p><strong>正确答案：" + correctLabels + "</strong></p>");
+                                    "<p><strong>正确答案：" + cLabelsStr + "</strong></p>");
                         }
                     }
                 } else {

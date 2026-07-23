@@ -43,11 +43,11 @@ body::-webkit-scrollbar { display:none; }
 #app { position:relative; min-height:100vh; }
 .page {
   position:relative;
-  animation:pageIn .35s var(--ease) both;
+  animation:pageIn .3s var(--ease) both;
 }
 @keyframes pageIn {
-  from { opacity:0; transform:translateX(30px); }
-  to { opacity:1; transform:translateX(0); }
+  from { opacity:0; transform:translateY(15px); }
+  to { opacity:1; transform:translateY(0); }
 }
 
 /* ===== 顶栏 ===== */
@@ -281,6 +281,32 @@ body::-webkit-scrollbar { display:none; }
 }
 /* 行内公式不溢出 */
 .block-content .katex { overflow-wrap:break-word; }
+
+/* 选项交互样式 */
+.option-item {
+  display: flex;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  cursor: pointer;
+  transition: all .2s var(--ease);
+}
+.option-item:active { transform: scale(0.98); }
+.option-item .opt-label { width: 28px; font-weight: bold; color: var(--text-2); }
+.option-item .opt-text { flex: 1; }
+.option-item.correct {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+.option-item.correct .opt-label, .option-item.correct .opt-text { color: var(--green); }
+.option-item.wrong {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+.option-item.wrong .opt-label, .option-item.wrong .opt-text { color: var(--red); }
+
 /* 选项排版 */
 .block-content p strong:first-child {
   display:inline-block; min-width:20px;
@@ -407,6 +433,31 @@ function bridgeHome() {
   if (window.Android && typeof window.Android.goHome === 'function') {
     window.Android.goHome();
   } else { window.location.href = 'file:///android_asset/app_frontend.html'; }
+}
+
+function checkOption(el) {
+  var q = FAVORITES_DATA[currentDetail];
+  if (!q || !q.correctLabels) return;
+
+  var correctArr = q.correctLabels.split(',');
+  var label = el.getAttribute('data-label');
+  var block = el.parentElement;
+
+  var allOptions = block.querySelectorAll('.option-item');
+  allOptions.forEach(function(o) {
+    o.classList.remove('wrong', 'correct');
+  });
+
+  if (correctArr.includes(label)) {
+    el.classList.add('correct');
+  } else {
+    el.classList.add('wrong');
+  }
+  allOptions.forEach(function(o) {
+    if (correctArr.includes(o.getAttribute('data-label'))) {
+      o.classList.add('correct');
+    }
+  });
 }
 
 // KaTeX 渲染配置

@@ -357,7 +357,10 @@ loadAppFrontend();
             @Override
             public void onPageStarted(String url) {
                 isLoading = true; isPageLoaded = false; loadingStartTime = System.currentTimeMillis();
-                showLoadingOverlay(true); progressBar.setVisibility(View.VISIBLE); errorOverlay.setVisibility(View.GONE);
+                if (url == null || !url.startsWith("file:///android_asset/")) {
+                    showLoadingOverlay(true); 
+                }
+                progressBar.setVisibility(View.VISIBLE); errorOverlay.setVisibility(View.GONE);
                 if (!isLoggedIn && url.contains("/login")) {
                     mainHandler.postDelayed(() -> { if (loginHelper != null) loginHelper.checkAndFillLoginCode(); }, 800);
                 }
