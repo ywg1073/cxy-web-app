@@ -59,7 +59,11 @@ public class WebViewConfig {
         settings.setDatabasePath(cachePath);
 
         // ========== 渲染加速（防白屏） ==========
-        // 启用硬件加速（已在 Activity 中设置）
+        // 启用硬件加速
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            settings.setOffscreenPreRaster(true);
+        }
         // 降低渲染优先级以提升首屏速度
         settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
 
@@ -102,6 +106,7 @@ public class WebViewConfig {
         webView.setVerticalScrollBarEnabled(true);
         webView.setHorizontalScrollBarEnabled(false);
         webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         // 设置默认字体大小
         settings.setDefaultFontSize(16);

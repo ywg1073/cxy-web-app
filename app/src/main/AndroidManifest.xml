@@ -19,6 +19,7 @@
     <application
         android:name="cxyonly.fans.CxyApplication"
         android:allowBackup="true"
+        android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:label="CXY"
         android:roundIcon="@mipmap/ic_launcher"

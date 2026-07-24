@@ -82,6 +82,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean weChatOpening = false;
     private boolean isLoggedIn = false;
     private boolean loginCheckInProgress = false;
+    private String pendingReturnUrl = "";
+    private boolean pullRefreshAllowed = false;
 
     private java.util.Stack<String> pageHistory = new java.util.Stack<>();
     private FavoritesManager favoritesManager;
@@ -89,12 +91,16 @@ public class MainActivity extends AppCompatActivity {
     private int currentProgress = 0;
     private static final int PROGRESS_MAX = 100;
     private static final int PROGRESS_ANIM_DELAY = 16;
-    private static final long FAV_SYNC_INTERVAL_MS = 5 * 1000;
+    private static final long FAV_SYNC_INTERVAL_MS = 15 * 1000;
     private Runnable favoritesSyncRunnable;
 
     private Runnable loginWatchdogRunnable;
     private Runnable networkRetryRunnable;
     private FavoritesManager.SyncListener originalFavListener;
+    private String cachedAppFrontendDataJson;
+    private long cachedAppFrontendDataTime = 0L;
+    private boolean appFrontendDataLoading = false;
+    private static final long APP_FRONTEND_DATA_CACHE_TTL_MS = 60 * 1000L;
 
     // ==================== Token/CSRF 持久化 ====================
     private void restoreAuthCache() {
@@ -119,6 +125,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setFlags(android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
         setContentView(R.layout.activity_main);
         setupStatusBar();
         initViews();
@@ -200,15 +207,39 @@ public class MainActivity extends AppCompatActivity {
             public void openPracticeWithQuestion(String categoryId, String questionId) {
                 mainHandler.post(() -> loadPracticeFrontend(categoryId, questionId));
             }
-
             @android.webkit.JavascriptInterface
             public void requestAppData() {
                 mainHandler.post(MainActivity.this::fetchAppFrontendData);
             }
 
             @android.webkit.JavascriptInterface
+            public void setPullRefreshEnabled(String enabledFlag) {
+                mainHandler.post(() -> {
+                    String cur = webView != null ? webView.getUrl() : null;
+                    pullRefreshAllowed = "true".equalsIgnoreCase(String.valueOf(enabledFlag))
+                            && cur != null && cur.startsWith("file:///android_asset/app_frontend.html");
+                    if (swipeRefresh != null) {
+                        swipeRefresh.setEnabled(pullRefreshAllowed);
+                    }
+                });
+            }
+
+
+            @android.webkit.JavascriptInterface
             public void requestPracticeData(String categoryId) {
                 mainHandler.post(() -> fetchPracticeData(categoryId));
+            }
+
+            @android.webkit.JavascriptInterface
+            public void sessionExpiredFromPractice() {
+                mainHandler.post(() -> {
+                    if (isLoggedIn) showSessionExpiredDialog();
+                });
+            }
+
+            @android.webkit.JavascriptInterface
+            public void practiceDataLoaded() {
+                mainHandler.post(() -> pendingReturnUrl = "");
             }
 
             @android.webkit.JavascriptInterface
@@ -357,10 +388,14 @@ loadAppFrontend();
             @Override
             public void onPageStarted(String url) {
                 isLoading = true; isPageLoaded = false; loadingStartTime = System.currentTimeMillis();
-                if (url == null || !url.startsWith("file:///android_asset/")) {
+                boolean isLocalAsset = url != null && url.startsWith("file:///android_asset/");
+                if (!isLocalAsset) {
                     showLoadingOverlay(true); 
+                    progressBar.setVisibility(View.VISIBLE);
+                } else {
+                    progressBar.setVisibility(View.GONE);
                 }
-                progressBar.setVisibility(View.VISIBLE); errorOverlay.setVisibility(View.GONE);
+                errorOverlay.setVisibility(View.GONE);
                 if (!isLoggedIn && url.contains("/login")) {
                     mainHandler.postDelayed(() -> { if (loginHelper != null) loginHelper.checkAndFillLoginCode(); }, 800);
                 }
@@ -368,6 +403,7 @@ loadAppFrontend();
             @Override
             public void onPageFinished(String url) {
                 isLoading = false; isPageLoaded = true;
+                updatePullRefreshForUrl(url);
                 if (loginCheckInProgress) { } else {
                     long elapsed = System.currentTimeMillis() - loadingStartTime;
                     long delay = isAutoRedirect ? Math.max(80, 1000 - elapsed) : 80;
@@ -433,9 +469,13 @@ loadAppFrontend();
             String js = "javascript:(function(){var token=localStorage.getItem('daguan_token')||'';var csrf=localStorage.getItem('csrf_token')||'';return JSON.stringify({logged_in:!!token,token:token,csrf:csrf});})()";
             getAuthWebView().evaluateJavascript(js, result -> {
                 try {
-                    org.json.JSONObject info = new org.json.JSONObject(result != null ? result : "{}");
+                    String jsonStr = result != null ? result : "{}";
+                    if (jsonStr.startsWith("\"") && jsonStr.endsWith("\"")) {
+                        jsonStr = jsonStr.substring(1, jsonStr.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
+                    }
+                    org.json.JSONObject info = new org.json.JSONObject(jsonStr);
                     boolean loggedIn = info.optBoolean("logged_in", false);
-                    if (loggedIn) {
+                        if (loggedIn) {
                         String tok = info.optString("token", "");
                         String cs = info.optString("csrf", "");
                         if (!tok.isEmpty()) cachedAuthToken = tok;
@@ -486,7 +526,11 @@ loadAppFrontend();
             String js = "javascript:(function(){var token=localStorage.getItem('daguan_token')||'';var csrf=localStorage.getItem('csrf_token')||'';return JSON.stringify({logged_in:!!token,token:token,csrf:csrf});})()";
             getAuthWebView().evaluateJavascript(js, result -> {
                 try {
-                    org.json.JSONObject info = new org.json.JSONObject(result != null ? result : "{}");
+                    String jsonStr = result != null ? result : "{}";
+                    if (jsonStr.startsWith("\"") && jsonStr.endsWith("\"")) {
+                        jsonStr = jsonStr.substring(1, jsonStr.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
+                    }
+                    org.json.JSONObject info = new org.json.JSONObject(jsonStr);
                     boolean loggedIn = info.optBoolean("logged_in", false);
                     if (loggedIn) {
                         // 缓存 token 和 csrf，避免后续 @JavascriptInterface 中死锁
@@ -500,7 +544,13 @@ if (!tok.isEmpty()) {
   mainHandler.postDelayed(() -> fetchAndCacheCsrf(), 500);
 }
                         isLoggedIn = true; loginGuideShown = false; showLoadingOverlay(false); isFirstLoad = false; isAutoRedirect = false;
-                        loadAppFrontend();
+                        if (pendingReturnUrl != null && !pendingReturnUrl.isEmpty()) {
+                            String target = refreshPracticeReturnUrlToken(pendingReturnUrl, cachedAuthToken);
+                            pendingReturnUrl = "";
+                            webView.loadUrl(target);
+                        } else {
+                            loadAppFrontend();
+                        }
                         mainHandler.postDelayed(() -> { if (WebViewConfig.isNetworkAvailable()) { startLoginWatchdog(); startFavoritesPeriodicSync(); } }, 1000);
                     } else {
                         // WebView localStorage 无 token，但 SharedPreferences 可能有缓存
@@ -570,7 +620,11 @@ if (!tok.isEmpty()) {
                 + "})()";
             getAuthWebView().evaluateJavascript(js, result -> {
                 try {
-                    org.json.JSONObject r = new org.json.JSONObject(result != null ? result : "{}");
+                    String jsonStr = result != null ? result : "{}";
+                    if (jsonStr.startsWith("\"") && jsonStr.endsWith("\"")) {
+                        jsonStr = jsonStr.substring(1, jsonStr.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
+                    }
+                    org.json.JSONObject r = new org.json.JSONObject(jsonStr);
                     if (r.optBoolean("ok", false)) {
                         // token 有效 → 恢复定时收藏同步和看门狗
                         startFavoritesPeriodicSync();
@@ -590,6 +644,7 @@ if (!tok.isEmpty()) {
         if (webView == null) return;
         isAutoRedirect = false;
         showLoadingOverlay(false);
+        pendingReturnUrl = "";
         pageHistory.clear();
         int favoriteCount = favoritesManager != null ? favoritesManager.getCount() : 0;
         String json = "{\"favoritesCount\":" + favoriteCount + "}";
@@ -622,6 +677,13 @@ if (!tok.isEmpty()) {
             sendAppFrontendData("{\"success\":false,\"error\":\"offline\"}");
             return;
         }
+        long now = System.currentTimeMillis();
+        if (cachedAppFrontendDataJson != null && now - cachedAppFrontendDataTime < APP_FRONTEND_DATA_CACHE_TTL_MS) {
+            sendAppFrontendData(cachedAppFrontendDataJson);
+            return;
+        }
+        if (appFrontendDataLoading) return;
+        appFrontendDataLoading = true;
         warmAuthWebView(() -> {
             // 同步 XMLHttpRequest + 从 localStorage 取 token/csrf + 加 Authorization 头
             String js = "javascript:(function(){"
@@ -660,6 +722,7 @@ if (!tok.isEmpty()) {
                             cachedAuthToken = "";
                             cachedCsrfToken = "";
                             clearAuthCache();
+                            appFrontendDataLoading = false;
                             showSessionExpiredDialog();
                             return;
                         }
@@ -671,6 +734,7 @@ if (!tok.isEmpty()) {
                             cachedAuthToken = "";
                             cachedCsrfToken = "";
                             clearAuthCache();
+                            appFrontendDataLoading = false;
                             showSessionExpiredDialog();
                             return;
                         }
@@ -693,8 +757,12 @@ if (!tok.isEmpty()) {
                         obj.put("favoritesCount", favoritesManager != null ? favoritesManager.getCount() : 0);
                         jsonStr = obj.toString();
                     } catch (Exception ignored) {}
+                    cachedAppFrontendDataJson = jsonStr;
+                    cachedAppFrontendDataTime = System.currentTimeMillis();
+                    appFrontendDataLoading = false;
                     sendAppFrontendData(jsonStr);
                 } catch (Exception e) {
+                    appFrontendDataLoading = false;
                     sendAppFrontendData("{\"success\":false,\"error\":\"parse\"}");
                 }
             });
@@ -837,6 +905,7 @@ saveAuthCache();
         if (cur != null && !cur.startsWith("file:///android_asset/practice_frontend")) {
             pageHistory.push(cur);
         }
+        pendingReturnUrl = buildPracticeReturnUrl(categoryId, questionId, cachedAuthToken);
         isAutoRedirect = false;
         showLoadingOverlay(false);
         // 先从 auth WebView 获取 access_token 和 csrf_token，再加载练习页
@@ -847,7 +916,11 @@ saveAuthCache();
                 String token = "";
                 String csrf = "";
                 try {
-                    org.json.JSONObject info = new org.json.JSONObject(tokenResult != null ? tokenResult : "{}");
+                    String jsonStr = tokenResult != null ? tokenResult : "{}";
+                    if (jsonStr.startsWith("\"") && jsonStr.endsWith("\"")) {
+                        jsonStr = jsonStr.substring(1, jsonStr.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
+                    }
+                    org.json.JSONObject info = new org.json.JSONObject(jsonStr);
                     token = info.optString("token", "");
                     csrf = info.optString("csrf", "");
                 } catch (Exception ignored) {}
@@ -868,6 +941,7 @@ saveAuthCache();
                 }
                 if (!token.isEmpty()) cachedAuthToken = token;
                 if (!csrf.isEmpty()) { cachedCsrfToken = csrf; saveAuthCache(); }
+                pendingReturnUrl = buildPracticeReturnUrl(categoryId, questionId, token);
                 StringBuilder json = new StringBuilder();
                 json.append("{\"categoryId\":\"").append(escapeJsonString(categoryId.trim())).append("\"");
                 json.append(",\"access_token\":\"").append(escapeJsonString(token)).append("\"");
@@ -886,6 +960,7 @@ saveAuthCache();
             }
             json.append("}");
             String b64 = android.util.Base64.encodeToString(json.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+            pendingReturnUrl = "file:///android_asset/practice_frontend.html#data=" + b64;
             webView.loadUrl("file:///android_asset/practice_frontend.html#data=" + b64);
         }
     }
@@ -912,13 +987,21 @@ saveAuthCache();
                 + "try{var x=new XMLHttpRequest();"
                 + "x.open('GET','/api/questions?category_id=" + safeId + "&include_children=true&page=1&per_page=20&sort=mobile',false);"
                 + "Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});"
-                + "x.send();return x.responseText;"
+                + "x.send();if(x.status==401||x.status==403)return JSON.stringify({auth_failed:true,status:x.status});return x.responseText;"
                 + "}catch(e){return JSON.stringify({success:false,error:e.message});}"
                 + "})()";
             authView.evaluateJavascript(js, result -> {
                 try {
                     Object parsed = new org.json.JSONTokener(result).nextValue();
-                    sendPracticeData(parsed instanceof String ? (String) parsed : String.valueOf(parsed));
+                    String jsonStr = parsed instanceof String ? (String) parsed : String.valueOf(parsed);
+                    try {
+                        org.json.JSONObject obj = new org.json.JSONObject(jsonStr);
+                        if (obj.optBoolean("auth_failed", false)) {
+                            showSessionExpiredDialog();
+                            return;
+                        }
+                    } catch (Exception ignored) { }
+                    sendPracticeData(jsonStr);
                 } catch (Exception e) {
                     sendPracticeData("{\"success\":false,\"error\":\"题目数据解析失败\"}");
                 }
@@ -937,6 +1020,42 @@ saveAuthCache();
         if (webView == null) return;
         String b64 = android.util.Base64.encodeToString((json == null ? "{}" : json).getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
         webView.evaluateJavascript("javascript:(function(){if(window.onPracticeData){window.onPracticeData('" + b64 + "');}})()", null);
+    }
+
+    private String buildPracticeReturnUrl(String categoryId, String questionId, String token) {
+        try {
+            StringBuilder json = new StringBuilder();
+            json.append("{\"categoryId\":\"").append(escapeJsonString(categoryId.trim())).append("\"");
+            if (token != null && !token.trim().isEmpty()) {
+                json.append(",\"access_token\":\"").append(escapeJsonString(token.trim())).append("\"");
+            }
+            if (questionId != null && !questionId.trim().isEmpty()) {
+                json.append(",\"questionId\":\"").append(escapeJsonString(questionId.trim())).append("\"");
+            }
+            json.append("}");
+            String b64 = android.util.Base64.encodeToString(json.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+            return "file:///android_asset/practice_frontend.html#data=" + b64;
+        } catch (Exception e) {
+            return "file:///android_asset/practice_frontend.html";
+        }
+    }
+
+    private String refreshPracticeReturnUrlToken(String url, String token) {
+        if (url == null || !url.startsWith("file:///android_asset/practice_frontend.html") || token == null || token.trim().isEmpty()) {
+            return url;
+        }
+        int idx = url.indexOf("#data=");
+        if (idx < 0) return url;
+        try {
+            String b64 = url.substring(idx + 6);
+            String json = new String(android.util.Base64.decode(b64, android.util.Base64.NO_WRAP), java.nio.charset.StandardCharsets.UTF_8);
+            org.json.JSONObject obj = new org.json.JSONObject(json);
+            obj.put("access_token", token.trim());
+            String nextB64 = android.util.Base64.encodeToString(obj.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+            return url.substring(0, idx) + "#data=" + nextB64;
+        } catch (Exception e) {
+            return url;
+        }
     }
 
     // ==================== 交互按钮状态操作 ====================
@@ -1337,17 +1456,17 @@ stopLoginWatchdog();
             @Override
             public void run() {
                 if (getAuthWebView() == null) return;
-                if (!WebViewConfig.isNetworkAvailable()) { mainHandler.postDelayed(this, 1500); return; }
+                if (!WebViewConfig.isNetworkAvailable()) { mainHandler.postDelayed(this, 5000); return; }
                 String js = "javascript:(function(){var token=localStorage.getItem('daguan_token');return token?'logged_in':'not_logged_in';})()";
                 getAuthWebView().evaluateJavascript(js, result -> {
                     String r = result != null ? result.replaceAll("\"", "") : "";
                     if ("logged_in".equals(r)) { missCount = 0; }
                     else if (isLoggedIn) { missCount++; if (missCount >= 3) { missCount = 0; handleTokenLost(); return; } }
-                    mainHandler.postDelayed(this, 1500);
+                    mainHandler.postDelayed(this, 5000);
                 });
             }
         };
-        mainHandler.postDelayed(loginWatchdogRunnable, 1500);
+        mainHandler.postDelayed(loginWatchdogRunnable, 5000);
     }
     private void stopLoginWatchdog() { if (loginWatchdogRunnable != null) { mainHandler.removeCallbacks(loginWatchdogRunnable); loginWatchdogRunnable = null; } }
 
@@ -1366,6 +1485,12 @@ stopLoginWatchdog();
         loginGuideShown = false;
         stopLoginWatchdog();
         stopFavoritesPeriodicSync();
+        if (webView != null) {
+            String cur = webView.getUrl();
+            if (cur != null && cur.startsWith("file:///android_asset/practice_frontend.html")) {
+                pendingReturnUrl = cur;
+            }
+        }
         cachedAuthToken = "";
         cachedCsrfToken = "";
         clearAuthCache();
@@ -1436,10 +1561,18 @@ stopLoginWatchdog();
     private void setupSwipeRefresh() {
         swipeRefresh.setColorSchemeColors(getColor(R.color.accent), getColor(R.color.accent_light));
         swipeRefresh.setProgressBackgroundColorSchemeColor(getColor(R.color.dark_card));
+        swipeRefresh.setOnChildScrollUpCallback((parent, child) -> !pullRefreshAllowed || webView == null || webView.getScrollY() > 0);
         swipeRefresh.setOnRefreshListener(() -> {
+            if (!pullRefreshAllowed) { swipeRefresh.setRefreshing(false); return; }
             if (!isLoading) { errorOverlay.setVisibility(View.GONE); if (loginHelper != null) loginHelper.reset(); loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); startSilentStartupCheck(); }
             mainHandler.postDelayed(() -> { if (swipeRefresh.isRefreshing()) swipeRefresh.setRefreshing(false); }, 5000);
         });
+    }
+
+    private void updatePullRefreshForUrl(String url) {
+        if (swipeRefresh == null) return;
+        pullRefreshAllowed = false;
+        swipeRefresh.setEnabled(false);
     }
     private void setupErrorRetry() {
         retryBtn.setOnClickListener(v -> { errorOverlay.setVisibility(View.GONE); WebViewConfig.clearCache(webView); loginGuideShown = false; isLoggedIn = false; loginCheckInProgress = false; stopFavoritesPeriodicSync(); stopLoginWatchdog(); startSilentStartupCheck(); });
