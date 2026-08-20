@@ -389,7 +389,7 @@ function renderFavorites(){
   return topbar('收藏题目','') + '<div class="content"><div class="panel" onclick="callAndroid(\'openFavorites\')"><div class="panel-head"><div><div class="eyebrow">本地收藏</div><div class="panel-title">进入收藏本</div><div class="panel-sub">复杂公式使用 KaTeX 渲染，断网也可以打开。</div></div><span class="pill">'+APP_STATE.favoritesCount+' 题</span></div></div><div class="empty"><div class="empty-emoji">★</div><div class="empty-title">点击上方卡片进入收藏</div><div class="empty-sub">收藏页会优先打开本地数据。</div></div></div>';
 }
 function renderMe(){
-  return topbar('我的','') + '<div class="content"><div class="panel"><div class="eyebrow">账户状态</div><div class="panel-title">已登录</div></div><div class="panel" onclick="callAndroid(\'checkUpdate\')"><div class="panel-title">检查更新</div><div class="panel-sub">检查并下载最新版本</div></div><div class="panel" onclick="callAndroid(\'logout\')"><div class="panel-title">退出登录</div><div class="panel-sub">清除当前账号登录状态</div></div></div>';
+  return topbar('我的','') + '<div class="content"><div class="panel"><div class="eyebrow">账户状态</div><div class="panel-title">已登录</div></div><div class="panel" onclick="callAndroid(\'checkUpdate\')"><div class="panel-title">检查更新</div><div class="panel-sub">检查并下载最新版本</div></div><div class="panel" onclick="callAndroid(\'logout\')"><div class="panel-title">退出登录</div><div class="panel-sub">清除当前账号登录状态</div></div><div class="panel"><div class="eyebrow">推荐</div><div class="panel-title">更成熟的选择</div><div class="panel-sub">本应用由 AI 辅助开发，功能与稳定性有限；如需更完善的体验，推荐使用社区维护的开源版本：<a href="https://github.com/nbntg/daguanyuan-for-android" style="color:var(--blue);word-break:break-all;">daguanyuan-for-android</a></div></div></div>';
 }
 // ========== 学习历史 ==========
 let HISTORY_DATA = {events:[], lastStudy:{}, loading:false};
